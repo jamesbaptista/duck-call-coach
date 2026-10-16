@@ -28,6 +28,7 @@ export const ANALYSIS = Object.freeze({
   resonanceLoHz: 800,
   resonanceHiHz: 4000,
   resonanceSmoothHz: 150,
+  liveMinDb: -90,
   fundBandLoHz: 1000,
   fundBandHiHz: 4000,
   fundLagLoHz: 100,
