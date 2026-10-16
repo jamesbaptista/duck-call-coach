@@ -349,6 +349,68 @@ export function createStore(db: IDBDatabase) {
       await transact(db, [SETTINGS], "readwrite", (tx) => request(tx.objectStore(SETTINGS).put(row)));
     },
 
+    /** Every attempt and reference with its audio, read in one transaction so the snapshot is consistent. Newest first. */
+    async getAllRecords(): Promise<{ attempts: AttemptRecord[]; references: ReferenceRecord[] }> {
+      return transact(db, [ATTEMPTS, REFERENCES, AUDIO], "readonly", async (tx) => {
+        const [attempts, references, audioRows] = await Promise.all([
+          getAllMeta<AttemptMeta>(tx, ATTEMPTS),
+          getAllMeta<ReferenceMeta>(tx, REFERENCES),
+          request(tx.objectStore(AUDIO).getAll() as IDBRequest<AudioRow[]>),
+        ]);
+        const audioByKey = new Map(audioRows.map((row) => [row.key, row]));
+        return {
+          attempts: attempts.sort(newestFirst).map((a) => withAudio(a, audioByKey.get(audioKey("attempt", a.id)))),
+          references: references.sort(newestFirst).map((r) => withAudio(r, audioByKey.get(audioKey("reference", r.id)))),
+        };
+      });
+    },
+
+    /**
+     * Adds records in one transaction: either all new ones are written or none are. Ids already present in
+     * their own store are skipped and the existing record is left untouched. An imported reference is only
+     * active when no other reference of its call type is, so the one-active-per-call-type rule holds.
+     */
+    async importRecords(records: {
+      attempts: AttemptRecord[];
+      references: ReferenceRecord[];
+    }): Promise<{ added: number; skipped: number }> {
+      records.attempts.forEach(assertRecord);
+      records.references.forEach(assertRecord);
+      // Read every Blob now: the transaction below must not wait on anything but IndexedDB requests.
+      const attempts = await Promise.all(records.attempts.map((a) => splitRecord("attempt", a)));
+      const references = await Promise.all(records.references.map((r) => splitRecord("reference", r)));
+      return transact(db, [ATTEMPTS, REFERENCES, AUDIO], "readwrite", async (tx) => {
+        const attemptStore = tx.objectStore(ATTEMPTS);
+        const referenceStore = tx.objectStore(REFERENCES);
+        const audioStore = tx.objectStore(AUDIO);
+        const activeCallTypes = new Set(
+          (await getAllMeta<ReferenceMeta>(tx, REFERENCES)).filter((r) => r.active).map((r) => r.callType),
+        );
+        let added = 0;
+        let skipped = 0;
+        // One record at a time, so a repeated id inside `records` sees the earlier copy and is skipped.
+        for (const { meta, audioRow } of attempts) {
+          if ((await request(attemptStore.getKey(meta.id))) !== undefined) {
+            skipped++;
+            continue;
+          }
+          await Promise.all([request(attemptStore.put(meta)), request(audioStore.put(audioRow))]);
+          added++;
+        }
+        for (const { meta, audioRow } of references) {
+          if ((await request(referenceStore.getKey(meta.id))) !== undefined) {
+            skipped++;
+            continue;
+          }
+          const active = meta.active === true && !activeCallTypes.has(meta.callType);
+          if (active) activeCallTypes.add(meta.callType);
+          await Promise.all([request(referenceStore.put({ ...meta, active })), request(audioStore.put(audioRow))]);
+          added++;
+        }
+        return { added, skipped };
+      });
+    },
+
     /** Closes the connection; every later call rejects. */
     close(): void {
       db.close();

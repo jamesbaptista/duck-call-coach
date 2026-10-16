@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AnalysisResult, CallMeasurements, CallType } from "../../src/analysis/types";
-import type { Scores } from "../../src/scoring/types";
+import type { CallType } from "../../src/analysis/types";
+import { analysisOf, attempt, bytesOf, MEASUREMENTS, reference, scoresOf } from "../helpers/records";
 import {
   createStore,
   getDefaultStore,
@@ -12,87 +12,6 @@ import {
   type ReferenceRecord,
   type Store,
 } from "../../src/storage/db";
-
-const MEASUREMENTS: CallMeasurements = {
-  noteCount: 5,
-  spacingMs: 250,
-  spacingCv: 0.1,
-  burstSpacingMs: null,
-  firstNoteMs: 120,
-  lastNoteMs: 100,
-  medianNoteMs: 110,
-  lastFirstRatio: 0.8,
-  loudestIndex: 1,
-  fadeDb: -6,
-  resonanceHz: 1500,
-  resonanceSlopeHzPerNote: -20,
-  flatness: 0.3,
-  maxSqueakShare: 0.05,
-  longNoteCount: 0,
-  snrDb: 30,
-};
-
-function scoresOf(overall: number): Scores {
-  return { overall, subs: { rhythm: overall, notes: overall, pitch: overall, tone: overall }, measures: [] };
-}
-
-function analysisOf(callType: CallType, flatness: number | null): AnalysisResult {
-  return {
-    callType,
-    analyzerVersion: "1.0.0",
-    noiseFloorDb: -60,
-    notes: [],
-    measurements: flatness === null ? null : { ...MEASUREMENTS, flatness },
-    quality: null,
-  };
-}
-
-function attempt(id: string, callType: CallType, createdAt: number, over: Partial<AttemptRecord> = {}): AttemptRecord {
-  return {
-    id,
-    callType,
-    createdAt,
-    analyzerVersion: "1.0.0",
-    analysis: analysisOf(callType, 0.3),
-    scores: scoresOf(50),
-    tips: { problems: ["Slow down."], positive: null },
-    audio: new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/webm" }),
-    mimeType: "audio/webm",
-    durationMs: 2000,
-    processingOff: true,
-    targetSource: "builtin",
-    ...over,
-  };
-}
-
-function reference(id: string, callType: CallType, createdAt: number, active = false): ReferenceRecord {
-  return {
-    id,
-    callType,
-    name: `Reference ${id}`,
-    createdAt,
-    audio: new Blob([new Uint8Array([9, 8, 7])], { type: "audio/mp4" }),
-    mimeType: "audio/mp4",
-    measurements: MEASUREMENTS,
-    notes: [
-      {
-        startS: 0.1,
-        endS: 0.2,
-        durationMs: 100,
-        peakDb: -20,
-        resonanceHz: 1500,
-        fundamentalHz: null,
-        squeakShare: null,
-        flatness: 0.3,
-      },
-    ],
-    active,
-  };
-}
-
-async function bytesOf(blob: Blob): Promise<number[]> {
-  return [...new Uint8Array(await blob.arrayBuffer())];
-}
 
 let counter = 0;
 let db: IDBDatabase;
@@ -531,5 +450,129 @@ describe("requestPersistence and storageEstimate in Node", () => {
       if (original) Object.defineProperty(globalThis, "navigator", original);
       else delete (globalThis as { navigator?: unknown }).navigator;
     }
+  });
+});
+
+describe("getAllRecords", () => {
+  it("returns every attempt and reference with its audio, newest first", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000));
+    await store.saveAttempt(attempt("a2", "hail", 2000));
+    await store.saveReference(reference("r1", "quack", 3000, true));
+    const all = await store.getAllRecords();
+    expect(all.attempts.map((a) => a.id)).toEqual(["a2", "a1"]);
+    expect(all.references.map((r) => r.id)).toEqual(["r1"]);
+    expect(await bytesOf(all.attempts[0].audio)).toEqual([1, 2, 3, 4]);
+    expect(await bytesOf(all.references[0].audio)).toEqual([9, 8, 7]);
+  });
+
+  it("marks a record whose audio row is gone", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000));
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("audio", "readwrite");
+      tx.objectStore("audio").delete("attempt:a1");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    const all = await store.getAllRecords();
+    expect(all.attempts[0].audioMissing).toBe(true);
+  });
+
+  it("is empty for an empty database", async () => {
+    expect(await store.getAllRecords()).toEqual({ attempts: [], references: [] });
+  });
+});
+
+describe("importRecords", () => {
+  it("writes attempts and references with their audio and counts them", async () => {
+    const result = await store.importRecords({
+      attempts: [attempt("a1", "quack", 1000), attempt("a2", "hail", 2000)],
+      references: [reference("r1", "quack", 3000)],
+    });
+    expect(result).toEqual({ added: 3, skipped: 0 });
+    expect((await store.listAttempts()).map((a) => a.id)).toEqual(["a2", "a1"]);
+    expect(await bytesOf((await store.getAudio("attempt", "a1"))!)).toEqual([1, 2, 3, 4]);
+    expect(await bytesOf((await store.getAudio("reference", "r1"))!)).toEqual([9, 8, 7]);
+    expect((await store.listReferences("quack")).map((r) => r.id)).toEqual(["r1"]);
+  });
+
+  it("skips ids already present in the same store and leaves the existing record alone", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000, { durationMs: 111 }));
+    await store.saveReference(reference("shared", "quack", 1000));
+    const result = await store.importRecords({
+      attempts: [attempt("a1", "quack", 1000, { durationMs: 999 }), attempt("shared", "hail", 2000)],
+      references: [reference("shared", "quack", 5000), reference("r2", "hail", 6000)],
+    });
+    // "shared" exists as a reference but not as an attempt, so only the attempt is new.
+    expect(result).toEqual({ added: 2, skipped: 2 });
+    expect((await store.getAttempt("a1"))!.durationMs).toBe(111);
+    expect((await store.listReferences("quack"))[0].createdAt).toBe(1000);
+  });
+
+  it("imports a duplicate id within one call only once", async () => {
+    const result = await store.importRecords({
+      attempts: [attempt("a1", "quack", 1000, { durationMs: 1 }), attempt("a1", "quack", 1000, { durationMs: 2 })],
+      references: [],
+    });
+    expect(result).toEqual({ added: 1, skipped: 1 });
+    expect((await store.getAttempt("a1"))!.durationMs).toBe(1);
+  });
+
+  it("imports an active reference as inactive when the call type already has an active one", async () => {
+    await store.saveReference(reference("mine", "quack", 1000, true));
+    await store.importRecords({
+      attempts: [],
+      references: [reference("theirs", "quack", 2000, true), reference("other", "hail", 2000, true)],
+    });
+    expect((await store.getActiveReference("quack"))!.id).toBe("mine");
+    expect((await store.listReferences("quack")).find((r) => r.id === "theirs")!.active).toBe(false);
+    expect((await store.getActiveReference("hail"))!.id).toBe("other");
+  });
+
+  it("keeps at most one imported reference active per call type", async () => {
+    await store.importRecords({
+      attempts: [],
+      references: [reference("x", "quack", 1000, true), reference("y", "quack", 2000, true)],
+    });
+    const active = (await store.listReferences("quack")).filter((r) => r.active);
+    expect(active).toHaveLength(1);
+  });
+
+  it("stores empty audio as an empty audio row", async () => {
+    await store.importRecords({
+      attempts: [attempt("a1", "quack", 1000, { audio: new Blob([], { type: "audio/webm" }) })],
+      references: [],
+    });
+    const audio = await store.getAudio("attempt", "a1");
+    expect(audio).toBeDefined();
+    expect(audio!.size).toBe(0);
+    expect(await countRows("audio")).toBe(1);
+  });
+
+  it("rolls everything back when a write fails part-way through", async () => {
+    await store.saveAttempt(attempt("keep", "quack", 1));
+    const unclonable = { ...attempt("bad", "quack", 3), tips: { problems: [() => 1], positive: null } };
+    await expect(
+      store.importRecords({
+        attempts: [attempt("a1", "quack", 1000), unclonable as unknown as AttemptRecord],
+        references: [reference("r1", "quack", 2000)],
+      }),
+    ).rejects.toThrow();
+    expect((await store.listAttempts()).map((a) => a.id)).toEqual(["keep"]);
+    expect(await countRows("references")).toBe(0);
+    expect(await countRows("audio")).toBe(1);
+  });
+
+  it("rejects an invalid record before writing anything", async () => {
+    await expect(
+      store.importRecords({
+        attempts: [attempt("a1", "quack", 1000), attempt("a2", "goose" as CallType, 1)],
+        references: [],
+      }),
+    ).rejects.toThrow(/call type/i);
+    expect(await store.listAttempts()).toEqual([]);
+  });
+
+  it("does nothing for empty input", async () => {
+    expect(await store.importRecords({ attempts: [], references: [] })).toEqual({ added: 0, skipped: 0 });
   });
 });
