@@ -1,8 +1,8 @@
-import { analyzeInWorker } from "../analysis/client";
+import { analyzeInWorker, resetAnalysisWorker } from "../analysis/client";
 import type { AnalysisResult, CallType } from "../analysis/types";
 import { getDefaultStore, type AttemptRecord } from "../storage/db";
 import { forgetUnsavedAttempt, rememberUnsavedAttempt } from "./session";
-import { withTimeout } from "./timeout";
+import { isTimeout, withTimeout } from "./timeout";
 import { buildAttempt, buildFailedAttempt, type AttemptRecording, type ScoringReference } from "./attempt";
 import { decodeToMono } from "./decode";
 
@@ -60,6 +60,7 @@ export async function analyzeToAttempt(
   try {
     analysis = await withTimeout(analyzeInWorker(pcm, sampleRate, callType), ANALYSIS_TIMEOUT_MS);
   } catch (error) {
+    if (isTimeout(error)) resetAnalysisWorker("The analysis took too long and was stopped.");
     const { reference } = await inputs;
     return { attempt: buildFailedAttempt({ ...identity, callType, recording, reference, error }), failure: { error } };
   }

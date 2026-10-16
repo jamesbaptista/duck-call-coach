@@ -8,6 +8,7 @@ import {
   chartDescription,
   chartTarget,
   QUALITY_MESSAGES,
+  REFERENCE_INACTIVE_NOTE,
   resultsConfidence,
   subScoreText,
 } from "../../src/ui/screens/results/model";
@@ -36,6 +37,12 @@ describe("QUALITY_MESSAGES", () => {
   });
 });
 
+describe("REFERENCE_INACTIVE_NOTE", () => {
+  it("is true whether the reference was deleted or switched off", () => {
+    expect(REFERENCE_INACTIVE_NOTE).toBe("That reference is no longer active, so this shows the built-in target.");
+  });
+});
+
 describe("subScoreText", () => {
   it("rounds a sub-score and shows a dash when there is none", () => {
     expect(subScoreText(86.6)).toBe("87");
@@ -52,7 +59,7 @@ describe("chartTarget", () => {
       shape: builtInShape(loadTargets("hail")),
       pairs: [],
       usesReference: false,
-      referenceDeleted: false,
+      referenceInactive: false,
     });
   });
 
@@ -62,17 +69,17 @@ describe("chartTarget", () => {
       shape: referenceShape(HAIL_B.notes),
       pairs: pairNotes(HAIL_A.notes, HAIL_B.notes),
       usesReference: true,
-      referenceDeleted: false,
+      referenceInactive: false,
     });
   });
 
-  it("falls back to the built-in shape when the reference has been deleted", () => {
+  it("falls back to the built-in shape when the reference is no longer active", () => {
     const target = chartTarget({ callType: "hail", targetSource: "reference", analysis: HAIL_A }, undefined);
     expect(target).toEqual({
       shape: builtInShape(loadTargets("hail")),
       pairs: [],
       usesReference: false,
-      referenceDeleted: true,
+      referenceInactive: true,
     });
   });
 });
@@ -87,7 +94,7 @@ describe("resultsConfidence", () => {
     expect(resultsConfidence({ callType: "comeback", targetSource: "reference" }, REFERENCE)).toBe("high");
   });
 
-  it("falls back to the built-in confidence when the reference has been deleted", () => {
+  it("falls back to the built-in confidence when the reference is no longer active", () => {
     expect(resultsConfidence({ callType: "chuckle", targetSource: "reference" }, undefined)).toBe("low");
   });
 });
@@ -95,14 +102,16 @@ describe("resultsConfidence", () => {
 describe("chartDescription", () => {
   it("says what is drawn, for screen readers", () => {
     expect(chartDescription({ attemptNotes: 5, targetNotes: 6, unmatched: 0, usesReference: false })).toBe(
-      "Your 5 notes, drawn over the hen target's 6 notes. Time runs left to right and loudness bottom to top.",
+      "Your 5 notes, drawn over the hen target's 6 notes. Time runs left to right and loudness bottom to top. " +
+        "Dots show your notes' pitch on a 1 to 3 kHz scale; the shaded band is a hen's pitch, 1.8 to 2.1 kHz.",
     );
   });
 
   it("uses singulars and counts the notes without a partner", () => {
     expect(chartDescription({ attemptNotes: 1, targetNotes: 1, unmatched: 1, usesReference: true })).toBe(
       "Your 1 note, drawn over your reference's 1 note. Time runs left to right and loudness bottom to top. " +
-        "1 note has no partner.",
+        "Dots show your notes' pitch and rings your reference's, on a 1 to 3 kHz scale; " +
+        "the shaded band is a hen's pitch, 1.8 to 2.1 kHz. 1 note has no partner.",
     );
     expect(chartDescription({ attemptNotes: 4, targetNotes: 6, unmatched: 2, usesReference: true })).toContain(
       "2 notes have no partner.",

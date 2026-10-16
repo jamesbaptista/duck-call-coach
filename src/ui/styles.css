@@ -432,6 +432,41 @@ h2 {
   font-size: 28px;
 }
 
+.chart-tick,
+.chart-band-label {
+  fill: var(--muted);
+  font-size: 24px;
+}
+
+/* A halo in the background colour keeps the label readable where it crosses a bar. */
+.chart-band-label {
+  fill: var(--fg);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+
+.chart-axis-pitch {
+  stroke-dasharray: 4 6;
+}
+
+.chart-hen-band {
+  fill: var(--hen-band);
+}
+
+.chart-marker {
+  fill: var(--fg);
+  stroke: var(--surface);
+  stroke-width: 2px;
+}
+
+.chart-marker-reference {
+  fill: none;
+  stroke: var(--chart-target);
+  stroke-width: 3px;
+}
+
 .chart-legend {
   display: flex;
   flex-wrap: wrap;
@@ -466,4 +501,18 @@ h2 {
 
 .swatch-unmatched {
   background: var(--warn);
+}
+
+.swatch-dot {
+  border-radius: 50%;
+  background: var(--fg);
+}
+
+.swatch-ring {
+  border: 3px solid var(--chart-target);
+  border-radius: 50%;
+}
+
+.swatch-band {
+  background: var(--hen-band);
 }

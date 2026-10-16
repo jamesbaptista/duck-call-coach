@@ -39,6 +39,12 @@ describe("builtInShape", () => {
     expect(shape[0].levelDb - shape[6].levelDb).toBeCloseTo(8);
   });
 
+  it("has no resonance, so the chart draws no pitch markers for it", () => {
+    for (const callType of ["quack", "hail", "comeback", "chuckle"] as const) {
+      expect(builtInShape(loadTargets(callType)).every((note) => note.resonanceHz === undefined)).toBe(true);
+    }
+  });
+
   it("draws the quack as one 280 ms note", () => {
     expect(builtInShape(loadTargets("quack"))).toEqual([{ startS: 0, durationMs: 280, levelDb: 0 }]);
   });
@@ -56,7 +62,7 @@ describe("builtInShape", () => {
 });
 
 describe("referenceShape", () => {
-  it("keeps each reference note's onset, length and peak level", () => {
+  it("keeps each reference note's onset, length, peak level and resonance", () => {
     const note = (startS: number, durationMs: number, peakDb: number): Note => ({
       startS,
       endS: startS + durationMs / 1000,
@@ -68,8 +74,8 @@ describe("referenceShape", () => {
       flatness: 0.05,
     });
     expect(referenceShape([note(0.5, 200, -12), note(0.8, 150, -18)])).toEqual([
-      { startS: 0.5, durationMs: 200, levelDb: -12 },
-      { startS: 0.8, durationMs: 150, levelDb: -18 },
+      { startS: 0.5, durationMs: 200, levelDb: -12, resonanceHz: 1900 },
+      { startS: 0.8, durationMs: 150, levelDb: -18, resonanceHz: 1900 },
     ]);
   });
 });

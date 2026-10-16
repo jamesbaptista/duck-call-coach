@@ -6,6 +6,8 @@ export interface ShapeNote {
   startS: number;
   durationMs: number;
   levelDb: number;
+  /** Only a reference has real resonance values; the built-in shape leaves this out. */
+  resonanceHz?: number;
 }
 
 /** The note sequences (hail, comeback): how many notes are drawn and how long the first one is. */
@@ -67,5 +69,10 @@ export function builtInShape(t: CallTargets): ShapeNote[] {
 
 /** The user's reference recording, note for note. */
 export function referenceShape(ref: Note[]): ShapeNote[] {
-  return ref.map((note) => ({ startS: note.startS, durationMs: note.durationMs, levelDb: note.peakDb }));
+  return ref.map((note) => ({
+    startS: note.startS,
+    durationMs: note.durationMs,
+    levelDb: note.peakDb,
+    resonanceHz: note.resonanceHz,
+  }));
 }

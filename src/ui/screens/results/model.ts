@@ -18,7 +18,7 @@ export const QUALITY_MESSAGES: Record<QualityIssue, string> = {
 };
 
 export const PROCESSING_ON_NOTE = "Your phone may be cleaning up the sound, so tone scores are less reliable.";
-export const REFERENCE_DELETED_NOTE = "Your reference was deleted; showing the built-in target.";
+export const REFERENCE_INACTIVE_NOTE = "That reference is no longer active, so this shows the built-in target.";
 export const ANALYSIS_UNFINISHED_TEXT = "We couldn't finish analysing this recording.";
 export const NOT_FOUND_TEXT = "We couldn't find that attempt.";
 
@@ -35,8 +35,11 @@ export interface ChartTarget {
   pairs: ChartPair[];
   /** True when the shape is the user's reference rather than the built-in hen target. */
   usesReference: boolean;
-  /** The attempt was scored against a reference that no longer exists, so the built-in shape stands in. */
-  referenceDeleted: boolean;
+  /**
+   * The attempt was scored against a reference that is no longer active (deleted, or the user switched back to
+   * the built-in target), so the built-in shape stands in.
+   */
+  referenceInactive: boolean;
 }
 
 /** The target shape the chart draws behind the attempt, and in reference mode how the notes pair up. */
@@ -50,14 +53,14 @@ export function chartTarget(
       shape: referenceShape(reference.notes),
       pairs: pairNotes(attempt.analysis.notes, reference.notes),
       usesReference: true,
-      referenceDeleted: false,
+      referenceInactive: false,
     };
   }
   return {
     shape: builtInShape(loadTargets(attempt.callType)),
     pairs: [],
     usesReference: false,
-    referenceDeleted: scoredOnReference,
+    referenceInactive: scoredOnReference,
   };
 }
 
@@ -84,9 +87,13 @@ export function chartDescription(counts: {
   usesReference: boolean;
 }): string {
   const target = counts.usesReference ? "your reference's" : "the hen target's";
+  const pitch = counts.usesReference
+    ? "Dots show your notes' pitch and rings your reference's, on a 1 to 3 kHz scale;"
+    : "Dots show your notes' pitch on a 1 to 3 kHz scale;";
   const parts = [
     `Your ${notes(counts.attemptNotes)}, drawn over ${target} ${notes(counts.targetNotes)}.`,
     "Time runs left to right and loudness bottom to top.",
+    `${pitch} the shaded band is a hen's pitch, 1.8 to 2.1 kHz.`,
   ];
   if (counts.unmatched > 0) {
     parts.push(`${notes(counts.unmatched)} ${counts.unmatched === 1 ? "has" : "have"} no partner.`);

@@ -183,6 +183,28 @@ describe("createAnalysisClient", () => {
     expect(workers).toHaveLength(1);
   });
 
+  it("after reset (the timeout path), rejects what is pending, kills the stuck worker and starts a fresh one", async () => {
+    const { workers, analyzeInWorker } = setup();
+    const stuck = analyzeInWorker(new Float32Array(10), SR, "hail");
+    const queued = analyzeInWorker(new Float32Array(10), SR, "hail");
+    analyzeInWorker.reset("The analysis took longer than 30 s.");
+    await expect(stuck).rejects.toThrow("took longer than 30 s");
+    await expect(queued).rejects.toThrow("took longer than 30 s");
+    expect(workers[0].terminated).toBe(true);
+
+    const retry = analyzeInWorker(new Float32Array(10), SR, "hail");
+    expect(workers).toHaveLength(2);
+    workers[0].reply({ id: workers[0].posted[0].message.id, result: resultFor("hail", -1) });
+    workers[1].reply({ id: workers[1].posted[0].message.id, result: resultFor("hail", -45) });
+    expect(await retry).toEqual(resultFor("hail", -45));
+  });
+
+  it("does nothing on reset when no worker is running", () => {
+    const { workers, analyzeInWorker } = setup();
+    analyzeInWorker.reset("nothing to stop");
+    expect(workers).toHaveLength(0);
+  });
+
   it("rejects when the worker cannot be created", async () => {
     const analyzeInWorker = createAnalysisClient(() => {
       throw new Error("no workers here");

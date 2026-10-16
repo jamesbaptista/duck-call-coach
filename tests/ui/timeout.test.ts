@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withTimeout } from "../../src/ui/timeout";
+import { isTimeout, withTimeout } from "../../src/ui/timeout";
 
 describe("withTimeout", () => {
   beforeEach(() => {
@@ -47,5 +47,14 @@ describe("withTimeout", () => {
   it("clears its timer once the promise settles", async () => {
     await withTimeout(Promise.resolve("done"), 1000);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("tells its own timeout apart from other failures", async () => {
+    const outcome = withTimeout(new Promise<never>(() => undefined), 10).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(isTimeout(await outcome)).toBe(true);
+    expect(isTimeout(new Error("worker crashed"))).toBe(false);
+    expect(isTimeout("TimeoutError")).toBe(false);
+    expect(isTimeout(null)).toBe(false);
   });
 });

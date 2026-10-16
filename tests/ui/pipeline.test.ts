@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { analyze } from "../../src/analysis/analyze";
 import type { AnalysisResult } from "../../src/analysis/types";
-import { analyzeInWorker } from "../../src/analysis/client";
+import { analyzeInWorker, resetAnalysisWorker } from "../../src/analysis/client";
 import { buildAttempt, isAnalysisFailed } from "../../src/ui/attempt";
 import { ANALYSIS_TIMEOUT_MS, analyzeToAttempt } from "../../src/ui/pipeline";
 import { readWav } from "../helpers/wav";
 
-vi.mock("../../src/analysis/client", () => ({ analyzeInWorker: vi.fn() }));
+vi.mock("../../src/analysis/client", () => ({ analyzeInWorker: vi.fn(), resetAnalysisWorker: vi.fn() }));
 
 vi.mock("../../src/storage/db", () => ({
   getDefaultStore: async () => ({
@@ -38,6 +38,7 @@ function run(): ReturnType<typeof analyzeToAttempt> {
 describe("analyzeToAttempt", () => {
   beforeEach(() => {
     vi.mocked(analyzeInWorker).mockReset();
+    vi.mocked(resetAnalysisWorker).mockReset();
   });
 
   afterEach(() => {
@@ -59,6 +60,7 @@ describe("analyzeToAttempt", () => {
     expect(failure).toEqual({ error });
     expect(isAnalysisFailed(attempt)).toBe(true);
     expect(attempt.audio).toBe(RECORDING.blob);
+    expect(resetAnalysisWorker).not.toHaveBeenCalled();
   });
 
   it("gives up on an analysis that hasn't finished after 30 s", async () => {
@@ -77,6 +79,8 @@ describe("analyzeToAttempt", () => {
     expect(failure?.error).toMatchObject({ name: "TimeoutError" });
     expect(isAnalysisFailed(attempt)).toBe(true);
     expect(attempt.id).toBe("attempt-1");
+    // The stuck worker is thrown away, so Retry analysis gets a fresh one.
+    expect(resetAnalysisWorker).toHaveBeenCalledTimes(1);
   });
 
   it("lets a scoring or tips bug surface as an error instead of a failed analysis", async () => {

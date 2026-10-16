@@ -73,6 +73,11 @@ export function chartView(attemptNotes: Note[], target: ChartTarget): HTMLElemen
     legendItem("swatch-target", target.usesReference ? "Your reference" : "Hen target"),
   );
   if (unmatched > 0) legend.append(legendItem("swatch-unmatched", "No partner: an extra or a missed note"));
+  legend.append(legendItem("swatch-dot", "Your pitch (1-3 kHz scale, right)"));
+  if (geometry.markers.some((marker) => marker.kind === "reference")) {
+    legend.append(legendItem("swatch-ring", "Your reference's pitch"));
+  }
+  legend.append(legendItem("swatch-band", "Hen pitch, 1.8-2.1 kHz"));
   return el(
     "section",
     { class: "chart-section" },

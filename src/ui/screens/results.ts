@@ -19,7 +19,7 @@ import {
   chartTarget,
   NOT_FOUND_TEXT,
   PROCESSING_ON_NOTE,
-  REFERENCE_DELETED_NOTE,
+  REFERENCE_INACTIVE_NOTE,
   resultsConfidence,
 } from "./results/model";
 import { chartView, notices, qualityView, scoresView, tipsView } from "./results/view";
@@ -198,7 +198,7 @@ class ResultsScreen {
     const parts: HTMLElement[] = [];
     if (quality !== null) parts.push(qualityView(quality));
     if (scores !== null) {
-      if (target.referenceDeleted) parts.push(...notices([REFERENCE_DELETED_NOTE]));
+      if (target.referenceInactive) parts.push(...notices([REFERENCE_INACTIVE_NOTE]));
       parts.push(scoresView(scores, resultsConfidence(attempt, reference)));
     }
     if (!attempt.processingOff) parts.push(...notices([PROCESSING_ON_NOTE]));

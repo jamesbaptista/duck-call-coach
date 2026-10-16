@@ -3,6 +3,12 @@ import type { AnalysisResult, CallType } from "./types";
 
 type AnalyzeFn = (pcm: Float32Array, sampleRate: number, callType: CallType) => Promise<AnalysisResult>;
 
+/** An analysis function that can also throw away its worker, for example one stuck past a timeout. */
+export type AnalysisClient = AnalyzeFn & {
+  /** Rejects every pending call with `reason`, terminates the worker, and lets the next call start a fresh one. */
+  reset(reason: string): void;
+};
+
 interface Pending {
   resolve: (result: AnalysisResult) => void;
   reject: (error: Error) => void;
@@ -19,10 +25,10 @@ interface AnalysisWorker {
 
 /**
  * Builds an analysis function over workers from `makeWorker`. The worker is created on the first call
- * and reused. If it crashes, every pending call rejects, the worker is discarded, and the next call
- * creates a fresh one.
+ * and reused. If it crashes or is reset, every pending call rejects, the worker is discarded, and the
+ * next call creates a fresh one.
  */
-export function createAnalysisClient(makeWorker: () => Worker): AnalyzeFn {
+export function createAnalysisClient(makeWorker: () => Worker): AnalysisClient {
   let worker: AnalysisWorker | null = null;
   let nextId = 0;
   const pending = new Map<number, Pending>();
@@ -64,7 +70,7 @@ export function createAnalysisClient(makeWorker: () => Worker): AnalyzeFn {
     return started;
   }
 
-  return (pcm, sampleRate, callType) =>
+  const analyze: AnalyzeFn = (pcm, sampleRate, callType) =>
     new Promise<AnalysisResult>((resolve, reject) => {
       const target = worker ?? startWorker();
       const id = nextId++;
@@ -76,9 +82,15 @@ export function createAnalysisClient(makeWorker: () => Worker): AnalyzeFn {
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
+
+  return Object.assign(analyze, {
+    reset(reason: string): void {
+      if (worker) failAll(worker, reason);
+    },
+  });
 }
 
-let defaultClient: AnalyzeFn | null = null;
+let defaultClient: AnalysisClient | null = null;
 
 /**
  * Analyzes a recording off the main thread. The worker is created on first use.
@@ -89,4 +101,12 @@ let defaultClient: AnalyzeFn | null = null;
 export function analyzeInWorker(pcm: Float32Array, sampleRate: number, callType: CallType): Promise<AnalysisResult> {
   defaultClient ??= createAnalysisClient(() => new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }));
   return defaultClient(pcm, sampleRate, callType);
+}
+
+/**
+ * Throws away the analysis worker (a no-op before the first analysis). Call it when an analysis has taken
+ * too long: a worker stuck in a long computation would otherwise also hold up every later call.
+ */
+export function resetAnalysisWorker(reason: string): void {
+  defaultClient?.reset(reason);
 }

@@ -6,13 +6,13 @@ import type { ShapeNote } from "../../src/ui/charts/targetShape";
 const WIDTH = 600;
 const HEIGHT = 200;
 
-function note(startS: number, durationMs: number, peakDb: number): Note {
+function note(startS: number, durationMs: number, peakDb: number, resonanceHz = 1900): Note {
   return {
     startS,
     endS: startS + durationMs / 1000,
     durationMs,
     peakDb,
-    resonanceHz: 1900,
+    resonanceHz,
     fundamentalHz: null,
     squeakShare: 0.1,
     flatness: 0.05,
@@ -107,12 +107,66 @@ describe("notesChartGeometry", () => {
   });
 
   it("handles an empty series and a single zero-length note", () => {
-    expect(notesChartGeometry([], [], WIDTH, HEIGHT)).toEqual({ attempt: [], target: [] });
+    expect(notesChartGeometry([], [], WIDTH, HEIGHT)).toMatchObject({ attempt: [], target: [], markers: [] });
     const single = notesChartGeometry([], [{ startS: 2, durationMs: 0, levelDb: -5 }], WIDTH, HEIGHT);
     expect(single.target).toHaveLength(1);
     for (const value of Object.values(single.target[0])) {
       if (typeof value === "number") expect(Number.isFinite(value)).toBe(true);
     }
     expect(single.target[0]).toMatchObject({ x: 0, w: 0, y: 0, h: HEIGHT });
+  });
+});
+
+describe("notesChartGeometry resonance markers", () => {
+  /** Resonance 1.0-3.0 kHz runs from the bottom (y = HEIGHT) to the top (y = 0) of the plot. */
+  const yFor = (hz: number): number => notesChartGeometry([note(0, 100, -10, hz)], [], WIDTH, HEIGHT).markers[0].y;
+
+  it("puts a marker at the centre of each attempt note", () => {
+    const geometry = notesChartGeometry(ATTEMPT, TARGET, WIDTH, HEIGHT);
+    const attemptMarkers = geometry.markers.filter((marker) => marker.kind === "attempt");
+    expect(attemptMarkers).toHaveLength(ATTEMPT.length);
+    attemptMarkers.forEach((marker, i) => {
+      const rect = geometry.attempt[i];
+      expect(marker.x).toBeCloseTo(rect.x + rect.w / 2);
+    });
+  });
+
+  it("draws no markers for the built-in shape, which has no resonance", () => {
+    const geometry = notesChartGeometry(ATTEMPT, TARGET, WIDTH, HEIGHT);
+    expect(geometry.markers.every((marker) => marker.kind === "attempt")).toBe(true);
+  });
+
+  it("draws reference markers for target notes that carry a resonance", () => {
+    const reference: ShapeNote[] = [
+      { startS: 0, durationMs: 200, levelDb: -10, resonanceHz: 2000 },
+      { startS: 0.3, durationMs: 200, levelDb: -12, resonanceHz: 1500 },
+    ];
+    const geometry = notesChartGeometry([], reference, WIDTH, HEIGHT);
+    expect(geometry.markers).toHaveLength(2);
+    expect(geometry.markers.map((marker) => marker.kind)).toEqual(["reference", "reference"]);
+    expect(geometry.markers[0].x).toBeCloseTo(geometry.target[0].x + geometry.target[0].w / 2);
+    expect(geometry.markers[1].y).toBeGreaterThan(geometry.markers[0].y);
+  });
+
+  it("maps 1-3 kHz to the plot's height, higher resonance higher up", () => {
+    expect(yFor(1000)).toBeCloseTo(HEIGHT);
+    expect(yFor(2000)).toBeCloseTo(HEIGHT / 2);
+    expect(yFor(3000)).toBeCloseTo(0);
+    expect(yFor(2400)).toBeLessThan(yFor(1800));
+  });
+
+  it("clamps resonance outside the scale to its edges", () => {
+    expect(yFor(400)).toBeCloseTo(HEIGHT);
+    expect(yFor(4000)).toBeCloseTo(0);
+  });
+
+  it("skips notes whose resonance is not a finite number", () => {
+    expect(notesChartGeometry([note(0, 100, -10, Number.NaN)], [], WIDTH, HEIGHT).markers).toEqual([]);
+  });
+
+  it("places the hen pitch band at 1.8-2.1 kHz on the same scale", () => {
+    const { henBand } = notesChartGeometry(ATTEMPT, TARGET, WIDTH, HEIGHT);
+    expect(henBand.y).toBeCloseTo(yFor(2100));
+    expect(henBand.y + henBand.h).toBeCloseTo(yFor(1800));
   });
 });
