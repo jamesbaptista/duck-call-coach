@@ -37,7 +37,7 @@ export default defineConfig({
   plugins: [contentSecurityPolicy()],
   build: {
     rollupOptions: {
-      input: { main: "index.html" },
+      input: { main: "index.html", diagnostics: "diagnostics.html" },
     },
   },
   test: {

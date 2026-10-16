@@ -1,0 +1,138 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f4ee;
+  --fg: #1d2a1f;
+  --muted: #5d6a5f;
+  --accent: #2f6b3a;
+  --bad: #b3261e;
+  --panel: #ffffff;
+  --track: #dcd8cb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14190f;
+    --fg: #e8eadc;
+    --muted: #9aa58f;
+    --accent: #6fbf7b;
+    --bad: #ff8a80;
+    --panel: #1f2617;
+    --track: #2f3826;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, sans-serif;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+}
+
+h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.record-button {
+  width: 100%;
+  min-height: 3.5rem;
+  margin: 1rem 0;
+  border: 0;
+  border-radius: 0.75rem;
+  background: var(--accent);
+  color: var(--bg);
+  font: inherit;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.record-button:disabled {
+  opacity: 0.5;
+}
+
+.record-button.recording {
+  background: var(--bad);
+}
+
+.status {
+  min-height: 1.5rem;
+  margin: 0;
+}
+
+.status.error {
+  color: var(--bad);
+}
+
+.panel {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: var(--panel);
+}
+
+.report {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.report dt {
+  color: var(--muted);
+}
+
+.report dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.verdict-good {
+  color: var(--accent);
+}
+
+.verdict-bad {
+  color: var(--bad);
+}
+
+.level-track {
+  height: 1rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--track);
+}
+
+.level-fill {
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+}
+
+.spectrum {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  background: var(--panel);
+}
+
+audio {
+  width: 100%;
+}
+
+[hidden] {
+  display: none;
+}
