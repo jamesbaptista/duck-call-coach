@@ -5,6 +5,16 @@ import type { Store } from "./db";
 export { BackupError, MAX_AUDIO_BYTES, MAX_BACKUP_CHARS, type BackupData } from "./backupSchema";
 
 const BYTE_ORDER_MARK = 0xfeff;
+const BYTES_PER_MB = 1024 * 1024;
+
+/**
+ * True when a file is too big to be one of our backups, so restore can refuse it before reading it into memory.
+ * A file's text never has more characters than the file has bytes, so this never refuses a backup parseBackup
+ * would accept, apart from one so close to the limit that non-ASCII text tips it over (exportBackup refuses those).
+ */
+export function isBackupFileTooBig(sizeBytes: number): boolean {
+  return sizeBytes > MAX_BACKUP_CHARS;
+}
 
 /** A stored record as it appears in the file: the audio becomes base64 text, and the read-back flag is dropped. */
 async function toFileRecord<T extends { audio: Blob; audioMissing?: true }>(
@@ -29,7 +39,11 @@ export async function exportBackup(store: Store): Promise<Blob> {
     "]}",
   ].join("");
   assertRestorable(text);
-  return new Blob([text], { type: "application/json" });
+  const file = new Blob([text], { type: "application/json" });
+  if (isBackupFileTooBig(file.size)) {
+    throw new BackupError(`This backup would not restore: it is larger than ${MAX_BACKUP_CHARS / BYTES_PER_MB} MB.`);
+  }
+  return file;
 }
 
 /** Fails now, while the user can still react, rather than handing out a file that restore would refuse. */
@@ -48,7 +62,7 @@ function assertRestorable(text: string): void {
  */
 export function parseBackup(text: string): BackupData {
   if (text.length > MAX_BACKUP_CHARS) {
-    throw new BackupError(`This file is larger than ${MAX_BACKUP_CHARS / (1024 * 1024)} MB, which is too big to be one of our backups.`);
+    throw new BackupError(`This file is larger than ${MAX_BACKUP_CHARS / BYTES_PER_MB} MB, which is too big to be one of our backups.`);
   }
   let raw: unknown;
   try {

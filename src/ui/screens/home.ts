@@ -1,10 +1,11 @@
 import type { CallType } from "../../analysis/types";
 import { loadTargets } from "../../scoring/score";
-import { getDefaultStore } from "../../storage/db";
+import { getDefaultStore, storageEstimate } from "../../storage/db";
 import { el } from "../dom";
 import { CALL_NAMES, confidenceText, HOME_CALL_ORDER } from "../labels";
 import { routeHref, type Route } from "../router";
 import { summarizeScores, summaryLines } from "../scoreSummary";
+import { showStorageWarning, storageWarningBanner } from "../storageUse";
 import type { RenderScreen } from "./screen";
 
 /** History and References are per call type; links from Home open them on the first call. */
@@ -55,8 +56,10 @@ export const renderHome: RenderScreen = (root) => {
     list.append(item);
   }
 
+  const banner = storageWarningBanner();
   root.append(
     el("h1", { tabindex: "-1" }, "Duck Call Coach"),
+    banner,
     el("p", { class: "lead" }, "Pick a call to practice. You'll get a score and tips after each try."),
     list,
     el(
@@ -74,6 +77,10 @@ export const renderHome: RenderScreen = (root) => {
   );
 
   void fillScores(tiles, () => disposed);
+  // storageEstimate never rejects; it gives null when the browser can't say.
+  void storageEstimate().then((estimate) => {
+    if (!disposed) showStorageWarning(banner, estimate);
+  });
   return () => {
     disposed = true;
   };

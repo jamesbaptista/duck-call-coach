@@ -1,6 +1,7 @@
 import "./styles.css";
 import { el } from "./dom";
 import { parseRoute, type Route } from "./router";
+import { renderHistory } from "./screens/history";
 import { renderHome } from "./screens/home";
 import { renderPlaceholder } from "./screens/placeholder";
 import { renderPractice } from "./screens/practice";
@@ -15,6 +16,8 @@ function renderRoute(root: HTMLElement, route: Route): Cleanup {
       return renderPractice(root, route);
     case "results":
       return renderResults(root, route);
+    case "history":
+      return renderHistory(root, route);
     default:
       return renderPlaceholder(root, route);
   }
