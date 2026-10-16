@@ -5,7 +5,9 @@ import {
   type RecordingResult,
   type RecordingSession,
 } from "../capture/recorder";
+import { AutoStop } from "../capture/autostop";
 import { averageSpectrum } from "./diagnostics-spectrum";
+import { describeCaptureError } from "./capture-error";
 
 const LEVEL_BAR_MIN_DB = -80;
 const SPECTRUM_MAX_HZ = 6000;
@@ -35,17 +37,6 @@ function peakDb(pcm: Float32Array): number {
   let peak = 0;
   for (const sample of pcm) peak = Math.max(peak, Math.abs(sample));
   return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
-}
-
-function describeError(error: unknown): string {
-  const name = error instanceof Error ? error.name : "";
-  if (name === "NotAllowedError") {
-    return "Microphone access was blocked. Allow the microphone for this site in your browser settings, then try again.";
-  }
-  if (name === "NotSupportedError") {
-    return "This browser can't record audio the way the app needs. On Android, use Chrome.";
-  }
-  return "Something went wrong while recording. Try again.";
 }
 
 function drawSpectrum(canvas: HTMLCanvasElement, result: RecordingResult): void {
@@ -153,10 +144,14 @@ function main(): void {
   const page = buildPage(root);
   let session: RecordingSession | null = null;
   let busy = false;
+  let autoStop: AutoStop | null = null;
+  let startedAtMs = 0;
   let playbackUrl: string | null = null;
 
-  function setStatus(message: string, isError = false): void {
-    page.status.textContent = message;
+  function setStatus(message: string, isError = false, detail?: string): void {
+    const lines = [element("span", { text: message })];
+    if (detail) lines.push(element("span", { className: "status-detail", text: detail }));
+    page.status.replaceChildren(...lines);
     page.status.classList.toggle("error", isError);
   }
 
@@ -199,12 +194,14 @@ function main(): void {
     page.resultsSection.hidden = true;
     page.player.pause();
     session = await startRecording();
-    session.onLevel(showLevel);
+    autoStop = new AutoStop();
+    startedAtMs = performance.now();
+    session.onLevel(handleLevel);
     showProcessing(session.processing);
     page.liveSection.hidden = false;
     page.button.textContent = "Stop";
     page.button.classList.add("recording");
-    setStatus("Recording. Make your call, then press Stop.");
+    setStatus("Recording. Make your call, then press Stop. It also stops by itself after a pause.");
   }
 
   async function end(active: RecordingSession): Promise<void> {
@@ -220,23 +217,36 @@ function main(): void {
     setStatus("Done.");
   }
 
-  page.button.addEventListener("click", () => {
-    if (busy) return;
+  function run(task: Promise<void>): void {
     busy = true;
-    const active = session;
-    (active ? end(active) : begin())
+    task
       .catch((error: unknown) => {
         session?.cancel();
         session = null;
         page.liveSection.hidden = true;
         page.button.textContent = "Record";
         page.button.classList.remove("recording");
-        setStatus(describeError(error), true);
+        const { summary, detail } = describeCaptureError(error);
+        setStatus(summary, true, detail);
       })
       .finally(() => {
         busy = false;
         page.button.disabled = false;
       });
+  }
+
+  function handleLevel(levelDb: number): void {
+    showLevel(levelDb);
+    const active = session;
+    if (!active || busy || !autoStop) return;
+    const elapsedS = (performance.now() - startedAtMs) / 1000;
+    if (autoStop.update(levelDb, elapsedS)) run(end(active));
+  }
+
+  page.button.addEventListener("click", () => {
+    if (busy) return;
+    const active = session;
+    run(active ? end(active) : begin());
   });
 
   window.addEventListener("pagehide", () => session?.cancel());

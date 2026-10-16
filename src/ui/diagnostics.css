@@ -136,3 +136,10 @@ audio {
 [hidden] {
   display: none;
 }
+
+.status-detail {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
