@@ -1,0 +1,285 @@
+/* Duck Call Coach: outdoors, one-handed, dawn or bright sun. Big targets, high contrast, marsh colours. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f4f1e8;
+  --surface: #ffffff;
+  --fg: #1b261c;
+  --muted: #4f5a4d;
+  --border: #c9c1ab;
+  --track: #ddd6c3;
+  --primary: #2f4a2c;
+  --primary-fg: #ffffff;
+  --record: #a8401b;
+  --record-fg: #ffffff;
+  --recording: #7d1d12;
+  --bad: #9e2318;
+  --focus: #1d5fa8;
+  --trace: #2f6b3a;
+  --hen-band: rgba(176, 132, 48, 0.22);
+  --radius: 0.875rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11160f;
+    --surface: #1b2218;
+    --fg: #eceedf;
+    --muted: #a7b19c;
+    --border: #3a4634;
+    --track: #2e3829;
+    --primary: #93c58a;
+    --primary-fg: #10170e;
+    --record: #e57a45;
+    --record-fg: #1c0d05;
+    --recording: #ff9b85;
+    --bad: #ff8f80;
+    --focus: #8ab8ff;
+    --trace: #93c58a;
+    --hen-band: rgba(222, 186, 102, 0.22);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 18px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.app {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem 16px 3rem;
+}
+
+h1 {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+h1:focus {
+  outline: none;
+}
+
+p {
+  margin: 0 0 0.75rem;
+}
+
+.lead {
+  font-size: 1.1rem;
+}
+
+a {
+  color: var(--primary);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Links and buttons */
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding-right: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.25rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 650;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button.secondary {
+  border-color: var(--primary);
+  background: var(--surface);
+  color: var(--primary);
+}
+
+.record-button {
+  min-height: 5rem;
+  margin-top: 0.5rem;
+  background: var(--record);
+  color: var(--record-fg);
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+}
+
+.record-button.recording {
+  background: var(--recording);
+}
+
+.actions {
+  margin-top: 0.5rem;
+}
+
+/* Home */
+
+.tiles {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 520px) {
+  .tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-height: 7rem;
+  height: 100%;
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.tile:hover {
+  border-color: var(--primary);
+}
+
+.tile-name {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.tile-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+  font-weight: 600;
+}
+
+.tile-confidence {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.nav-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0.5rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* Practice */
+
+.confidence,
+.target-label {
+  color: var(--muted);
+}
+
+.live {
+  margin: 0.5rem 0 1rem;
+}
+
+.live-label {
+  margin: 0.5rem 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.level-track {
+  height: 1.25rem;
+  overflow: hidden;
+  border-radius: 0.625rem;
+  background: var(--track);
+}
+
+.level-fill {
+  width: 0;
+  height: 100%;
+  background: var(--trace);
+}
+
+.trace {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.status {
+  min-height: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.status.error {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.status .steps {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.status-detail {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
