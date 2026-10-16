@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vitest/config";
+import { buildId, DEV_BUILD_ID } from "./src/build/buildId.ts";
 import { CONTENT_SECURITY_POLICY } from "./src/build/csp.ts";
 import { buildServiceWorker, SERVICE_WORKER_FILE, type OutputFile } from "./src/build/serviceWorker.ts";
 
@@ -67,9 +68,13 @@ function serviceWorker(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base: "/duck-call-coach/",
   plugins: [contentSecurityPolicy(), serviceWorker()],
+  define: {
+    // Shown on the Credits screen. JSON.stringify makes it a string literal in the bundle.
+    __BUILD_ID__: JSON.stringify(command === "build" ? buildId(process.env.GITHUB_SHA, new Date()) : DEV_BUILD_ID),
+  },
   build: {
     rollupOptions: {
       input: { main: "index.html", diagnostics: "diagnostics.html" },
@@ -78,4 +83,4 @@ export default defineConfig({
   test: {
     environment: "node",
   },
-});
+}));

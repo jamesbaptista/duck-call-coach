@@ -69,6 +69,8 @@ export const notUsed: readonly NotUsedRecording[] = [
 ];
 
 const XENO_CANTO_URL = "https://xeno-canto.org";
+/** The Milestone-1 page that shows what the phone's microphone really delivers. */
+export const DIAGNOSTICS_PATH = "diagnostics.html";
 
 /** Opens outside the app, without telling the other site where the visitor came from. */
 function externalLink(href: string, text: string): HTMLElement {
@@ -127,6 +129,13 @@ export const renderCredits: RenderScreen = (root) => {
     el("h2", {}, "Recordings not used"),
     ...notUsed.map(notUsedView),
     el("p", { class: "hint" }, "Test fixtures are used only by the app's automated tests and aren't part of the app."),
+    el("h2", {}, "About this app"),
+    el(
+      "p",
+      {},
+      el("a", { class: "button secondary", href: `${import.meta.env.BASE_URL}${DIAGNOSTICS_PATH}` }, "Mic check (diagnostics)"),
+    ),
+    el("p", { class: "hint" }, `Build ${__BUILD_ID__}`),
   );
   return () => undefined;
 };

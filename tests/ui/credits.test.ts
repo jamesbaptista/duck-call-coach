@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { credits, notUsed } from "../../src/ui/screens/credits";
+import { credits, DIAGNOSTICS_PATH, notUsed } from "../../src/ui/screens/credits";
 
 /** The Credits screen must say exactly what CREDITS.md says, and cover every clip the app ships. */
 
@@ -61,5 +61,13 @@ describe("credits", () => {
     for (const url of urls) {
       expect(url).toMatch(/^https:\/\/(xeno-canto\.org|creativecommons\.org)\//);
     }
+  });
+});
+
+describe("Mic check link", () => {
+  it("points at the diagnostics page the build ships", () => {
+    expect(DIAGNOSTICS_PATH).toBe("diagnostics.html");
+    expect(existsSync(DIAGNOSTICS_PATH)).toBe(true);
+    expect(readFileSync("vite.config.ts", "utf8")).toContain(`diagnostics: "${DIAGNOSTICS_PATH}"`);
   });
 });
