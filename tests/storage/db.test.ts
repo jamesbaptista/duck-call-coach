@@ -1,9 +1,10 @@
 import "fake-indexeddb/auto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnalysisResult, CallMeasurements, CallType } from "../../src/analysis/types";
 import type { Scores } from "../../src/scoring/types";
 import {
   createStore,
+  getDefaultStore,
   openDb,
   requestPersistence,
   storageEstimate,
@@ -106,10 +107,19 @@ afterEach(() => {
   db.close();
 });
 
+function countRows(storeName: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(storeName, "readonly").objectStore(storeName).count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 describe("openDb", () => {
-  it("creates the three stores with the callType indexes", () => {
-    expect([...db.objectStoreNames].sort()).toEqual(["attempts", "references", "settings"]);
-    const tx = db.transaction(["attempts", "references", "settings"], "readonly");
+  it("creates the four stores with the callType indexes on attempts and references", () => {
+    expect([...db.objectStoreNames].sort()).toEqual(["attempts", "audio", "references", "settings"]);
+    const tx = db.transaction(["attempts", "references", "settings", "audio"], "readonly");
+    expect(tx.objectStore("audio").keyPath).toBe("id");
     expect(tx.objectStore("attempts").keyPath).toBe("id");
     expect([...tx.objectStore("attempts").indexNames]).toEqual(["callType"]);
     expect(tx.objectStore("references").keyPath).toBe("id");
@@ -188,6 +198,84 @@ describe("attempts", () => {
   });
 });
 
+describe("audio is kept apart from metadata", () => {
+  it("list functions return metadata without audio and never open the audio store", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000, { scores: scoresOf(80) }));
+    await store.saveReference(reference("r1", "quack", 1000, true));
+    const spy = vi.spyOn(db, "transaction");
+    const attempts = await store.listAttempts("quack");
+    const allAttempts = await store.listAttempts();
+    const references = await store.listReferences("quack");
+    await store.bestFlatness("quack");
+    const touched = spy.mock.calls.flatMap(([names]) => (Array.isArray(names) ? names : [names]));
+    spy.mockRestore();
+    expect(touched).not.toContain("audio");
+    expect(touched.length).toBeGreaterThan(0);
+    for (const row of [...attempts, ...allAttempts, ...references]) {
+      expect(row).not.toHaveProperty("audio");
+      expect(row).not.toHaveProperty("audioBytes");
+    }
+    expect(attempts[0]!.id).toBe("a1");
+    expect(references[0]!.name).toBe("Reference r1");
+  });
+
+  it("getAudio returns the bytes and mime type of an attempt or a reference", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000, { mimeType: "audio/ogg" }));
+    await store.saveReference(reference("r1", "hail", 1000));
+    const a = await store.getAudio("a1");
+    expect(a?.type).toBe("audio/ogg");
+    expect(await bytesOf(a!)).toEqual([1, 2, 3, 4]);
+    const r = await store.getAudio("r1");
+    expect(r?.type).toBe("audio/mp4");
+    expect(await bytesOf(r!)).toEqual([9, 8, 7]);
+    expect(await store.getAudio("missing")).toBeUndefined();
+  });
+
+  it("getActiveReference returns the full record with its audio", async () => {
+    await store.saveReference(reference("r1", "hail", 1000, true));
+    const active = await store.getActiveReference("hail");
+    expect(active?.audio.type).toBe("audio/mp4");
+    expect(await bytesOf(active!.audio)).toEqual([9, 8, 7]);
+  });
+
+  it("deletes leave no orphan audio rows", async () => {
+    await store.saveAttempt(attempt("h1", "hail", 1000));
+    await store.saveAttempt(attempt("h2", "hail", 2000));
+    await store.saveAttempt(attempt("q1", "quack", 3000));
+    await store.saveAttempt(attempt("q2", "quack", 4000));
+    await store.saveReference(reference("r1", "hail", 5000));
+    await store.saveReference(reference("r2", "hail", 6000));
+    expect(await countRows("audio")).toBe(6);
+
+    await store.deleteAttempt("q2");
+    expect(await countRows("audio")).toBe(5);
+    expect(await store.getAudio("q2")).toBeUndefined();
+
+    await store.deleteAttemptsFor("hail");
+    expect(await countRows("audio")).toBe(3);
+    expect(await store.getAudio("h1")).toBeUndefined();
+    expect(await store.getAudio("q1")).toBeDefined();
+
+    await store.deleteReference("r1");
+    expect(await countRows("audio")).toBe(2);
+    expect(await store.getAudio("r1")).toBeUndefined();
+
+    await store.setSetting("volume", 7);
+    await store.deleteAll();
+    expect(await countRows("audio")).toBe(0);
+    expect(await countRows("attempts")).toBe(0);
+    expect(await countRows("references")).toBe(0);
+    expect(await store.getSetting<number>("volume")).toBe(7);
+  });
+
+  it("replacing a record overwrites its audio instead of adding a row", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000));
+    await store.saveAttempt(attempt("a1", "quack", 1000, { audio: new Blob([new Uint8Array([5])], { type: "audio/webm" }) }));
+    expect(await countRows("audio")).toBe(1);
+    expect(await bytesOf((await store.getAudio("a1"))!)).toEqual([5]);
+  });
+});
+
 describe("references", () => {
   it("round-trips audio bytes and type and lists newest first per call type", async () => {
     await store.saveReference(reference("r1", "hail", 1000));
@@ -195,8 +283,9 @@ describe("references", () => {
     await store.saveReference(reference("r3", "quack", 3000));
     const hail = await store.listReferences("hail");
     expect(hail.map((r) => r.id)).toEqual(["r2", "r1"]);
-    expect(hail[0]!.audio.type).toBe("audio/mp4");
-    expect(await bytesOf(hail[0]!.audio)).toEqual([9, 8, 7]);
+    const audio = await store.getAudio("r2");
+    expect(audio?.type).toBe("audio/mp4");
+    expect(await bytesOf(audio!)).toEqual([9, 8, 7]);
     expect(hail[0]!.notes).toEqual(reference("r2", "hail", 2000).notes);
     expect(hail[0]!.measurements).toEqual(MEASUREMENTS);
   });
@@ -211,6 +300,26 @@ describe("references", () => {
     expect((await store.getActiveReference("hail"))?.id).toBe("hailB");
     expect((await store.listReferences("hail")).filter((r) => r.active).map((r) => r.id)).toEqual(["hailB"]);
     expect((await store.getActiveReference("quack"))?.id).toBe("quackA");
+  });
+
+  it("saving an active reference deactivates the others of its call type only", async () => {
+    await store.saveReference(reference("hailA", "hail", 1000, true));
+    await store.saveReference(reference("quackA", "quack", 2000, true));
+    await store.saveReference(reference("hailB", "hail", 3000, true));
+    expect((await store.listReferences("hail")).map((r) => [r.id, r.active])).toEqual([
+      ["hailB", true],
+      ["hailA", false],
+    ]);
+    expect((await store.getActiveReference("quack"))?.id).toBe("quackA");
+    await store.saveReference(reference("hailC", "hail", 4000, false));
+    expect((await store.getActiveReference("hail"))?.id).toBe("hailB");
+  });
+
+  it("re-saving the active reference keeps it active", async () => {
+    await store.saveReference(reference("hailA", "hail", 1000, true));
+    await store.saveReference({ ...reference("hailA", "hail", 1000, true), name: "Renamed" });
+    const active = await store.getActiveReference("hail");
+    expect(active?.name).toBe("Renamed");
   });
 
   it("clears the active reference when given null", async () => {
@@ -306,6 +415,28 @@ describe("storage failures", () => {
     const closedStore = createStore(closed);
     closed.close();
     await expect(closedStore.listAttempts()).rejects.toMatchObject({ name: "InvalidStateError" });
+  });
+});
+
+describe("getDefaultStore", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("retries after a failed open and then reuses the opened store", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    await expect(getDefaultStore()).rejects.toThrow(/IndexedDB is not available/);
+    vi.unstubAllGlobals();
+    const first = getDefaultStore();
+    const store = await first;
+    try {
+      expect(getDefaultStore()).toBe(first);
+      await store.setSetting("probe", 1);
+      expect(await store.getSetting<number>("probe")).toBe(1);
+    } finally {
+      await store.deleteAll();
+      store.close();
+    }
   });
 });
 

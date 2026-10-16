@@ -28,8 +28,20 @@ export interface ReferenceRecord {
   active: boolean;
 }
 
-/** What is actually kept in IndexedDB: the audio as raw bytes rather than a Blob (ruling R6). */
-type Stored<T extends { audio: Blob }> = Omit<T, "audio"> & { audioBytes: ArrayBuffer };
+/** An attempt without its audio: what lists and tiles need. */
+export type AttemptMeta = Omit<AttemptRecord, "audio">;
+/** A reference without its audio. */
+export type ReferenceMeta = Omit<ReferenceRecord, "audio">;
+
+/**
+ * Audio lives in its own store, as raw bytes rather than a Blob (ruling R6), so that reading
+ * metadata never loads recordings. Rows are keyed by the owning attempt or reference id.
+ */
+interface AudioRow {
+  id: string;
+  audioBytes: ArrayBuffer;
+  mimeType: string;
+}
 
 interface SettingRow {
   key: string;
@@ -40,6 +52,7 @@ const DEFAULT_DB_NAME = "duck-call-coach";
 const DB_VERSION = 1;
 const ATTEMPTS = "attempts";
 const REFERENCES = "references";
+const AUDIO = "audio";
 const SETTINGS = "settings";
 const CALL_TYPE_INDEX = "callType";
 
@@ -107,14 +120,16 @@ function assertRecord(record: { id: unknown; callType: unknown; audio: unknown }
   if (!(record.audio instanceof Blob)) throw new Error("Record audio must be a Blob");
 }
 
-async function toStored<T extends { audio: Blob }>(record: T): Promise<Stored<T>> {
-  const { audio, ...rest } = record;
-  return { ...rest, audioBytes: await audio.arrayBuffer() };
+/** Splits a record into its metadata row and its audio row. Reads the Blob, so call it before opening a transaction. */
+async function splitRecord<T extends { id: string; audio: Blob; mimeType: string }>(
+  record: T,
+): Promise<{ meta: Omit<T, "audio">; audioRow: AudioRow }> {
+  const { audio, ...meta } = record;
+  return { meta, audioRow: { id: record.id, audioBytes: await audio.arrayBuffer(), mimeType: record.mimeType } };
 }
 
-function fromStored<T extends { audio: Blob; mimeType: string }>(stored: Stored<T>): T {
-  const { audioBytes, ...rest } = stored;
-  return { ...rest, audio: new Blob([audioBytes], { type: stored.mimeType }) } as unknown as T;
+function audioBlob(row: AudioRow): Blob {
+  return new Blob([row.audioBytes], { type: row.mimeType });
 }
 
 /** Newest first; ties broken by id descending so the order is deterministic. */
@@ -134,6 +149,7 @@ export function openDb(name: string = DEFAULT_DB_NAME): Promise<IDBDatabase> {
       const db = req.result;
       db.createObjectStore(ATTEMPTS, { keyPath: "id" }).createIndex(CALL_TYPE_INDEX, CALL_TYPE_INDEX);
       db.createObjectStore(REFERENCES, { keyPath: "id" }).createIndex(CALL_TYPE_INDEX, CALL_TYPE_INDEX);
+      db.createObjectStore(AUDIO, { keyPath: "id" });
       db.createObjectStore(SETTINGS, { keyPath: "key" });
     };
     req.onsuccess = () => {
@@ -148,81 +164,102 @@ export function openDb(name: string = DEFAULT_DB_NAME): Promise<IDBDatabase> {
 }
 
 export function createStore(db: IDBDatabase) {
-  function getAllStored<T>(tx: IDBTransaction, storeName: string, callType?: CallType): Promise<T[]> {
+  function getAllMeta<T>(tx: IDBTransaction, storeName: string, callType?: CallType): Promise<T[]> {
     const store = tx.objectStore(storeName);
     return callType === undefined
       ? request(store.getAll() as IDBRequest<T[]>)
       : request(store.index(CALL_TYPE_INDEX).getAll(callType) as IDBRequest<T[]>);
   }
 
-  async function listAttemptsIn(tx: IDBTransaction, callType?: CallType): Promise<AttemptRecord[]> {
-    const stored = await getAllStored<Stored<AttemptRecord>>(tx, ATTEMPTS, callType);
-    return stored.map((s) => fromStored<AttemptRecord>(s)).sort(newestFirst);
-  }
-
-  async function listReferencesIn(tx: IDBTransaction, callType: CallType): Promise<ReferenceRecord[]> {
-    const stored = await getAllStored<Stored<ReferenceRecord>>(tx, REFERENCES, callType);
-    return stored.map((s) => fromStored<ReferenceRecord>(s)).sort(newestFirst);
-  }
-
-  async function deleteKeys(tx: IDBTransaction, storeName: string, keys: IDBValidKey[]): Promise<void> {
-    const store = tx.objectStore(storeName);
-    await Promise.all(keys.map((key) => request(store.delete(key))));
-  }
-
-  async function listAttempts(callType?: CallType): Promise<AttemptRecord[]> {
+  async function listAttempts(callType?: CallType): Promise<AttemptMeta[]> {
     if (callType !== undefined) assertCallType(callType);
-    return transact(db, [ATTEMPTS], "readonly", (tx) => listAttemptsIn(tx, callType));
+    const attempts = await transact(db, [ATTEMPTS], "readonly", (tx) => getAllMeta<AttemptMeta>(tx, ATTEMPTS, callType));
+    return attempts.sort(newestFirst);
   }
 
-  async function listReferences(callType: CallType): Promise<ReferenceRecord[]> {
+  async function listReferences(callType: CallType): Promise<ReferenceMeta[]> {
     assertCallType(callType);
-    return transact(db, [REFERENCES], "readonly", (tx) => listReferencesIn(tx, callType));
+    const references = await transact(db, [REFERENCES], "readonly", (tx) =>
+      getAllMeta<ReferenceMeta>(tx, REFERENCES, callType),
+    );
+    return references.sort(newestFirst);
+  }
+
+  /** Deletes the metadata rows and their audio rows. */
+  async function deleteWithAudio(tx: IDBTransaction, metaStore: string, ids: IDBValidKey[]): Promise<void> {
+    const meta = tx.objectStore(metaStore);
+    const audio = tx.objectStore(AUDIO);
+    await Promise.all(ids.flatMap((id) => [request(meta.delete(id)), request(audio.delete(id))]));
   }
 
   return {
     async saveAttempt(attempt: AttemptRecord): Promise<void> {
       assertRecord(attempt);
-      const stored = await toStored(attempt);
-      await transact(db, [ATTEMPTS], "readwrite", (tx) => request(tx.objectStore(ATTEMPTS).put(stored)));
+      const { meta, audioRow } = await splitRecord(attempt);
+      await transact(db, [ATTEMPTS, AUDIO], "readwrite", async (tx) => {
+        await Promise.all([request(tx.objectStore(ATTEMPTS).put(meta)), request(tx.objectStore(AUDIO).put(audioRow))]);
+      });
     },
 
+    /** The attempt with its audio, or undefined if there is no such attempt. */
     async getAttempt(id: string): Promise<AttemptRecord | undefined> {
-      const stored = await transact(db, [ATTEMPTS], "readonly", (tx) =>
-        request(tx.objectStore(ATTEMPTS).get(id) as IDBRequest<Stored<AttemptRecord> | undefined>),
-      );
-      return stored === undefined ? undefined : fromStored<AttemptRecord>(stored);
+      return transact(db, [ATTEMPTS, AUDIO], "readonly", async (tx) => {
+        const meta = await request(tx.objectStore(ATTEMPTS).get(id) as IDBRequest<AttemptMeta | undefined>);
+        if (meta === undefined) return undefined;
+        const row = await request(tx.objectStore(AUDIO).get(id) as IDBRequest<AudioRow | undefined>);
+        if (row === undefined) throw new Error(`Audio is missing for attempt ${id}`);
+        return { ...meta, audio: audioBlob(row) };
+      });
     },
 
-    /** Newest first. */
+    /** The recording of an attempt or reference, or undefined if there is none. */
+    async getAudio(id: string): Promise<Blob | undefined> {
+      const row = await transact(db, [AUDIO], "readonly", (tx) =>
+        request(tx.objectStore(AUDIO).get(id) as IDBRequest<AudioRow | undefined>),
+      );
+      return row === undefined ? undefined : audioBlob(row);
+    },
+
+    /** Metadata only, newest first. */
     listAttempts,
 
     async deleteAttempt(id: string): Promise<void> {
-      await transact(db, [ATTEMPTS], "readwrite", (tx) => deleteKeys(tx, ATTEMPTS, [id]));
+      await transact(db, [ATTEMPTS, AUDIO], "readwrite", (tx) => deleteWithAudio(tx, ATTEMPTS, [id]));
     },
 
     async deleteAttemptsFor(callType: CallType): Promise<void> {
       assertCallType(callType);
-      await transact(db, [ATTEMPTS], "readwrite", async (tx) => {
-        const keys = await request(tx.objectStore(ATTEMPTS).index(CALL_TYPE_INDEX).getAllKeys(callType));
-        await deleteKeys(tx, ATTEMPTS, keys);
+      await transact(db, [ATTEMPTS, AUDIO], "readwrite", async (tx) => {
+        const ids = await request(tx.objectStore(ATTEMPTS).index(CALL_TYPE_INDEX).getAllKeys(callType));
+        await deleteWithAudio(tx, ATTEMPTS, ids);
       });
     },
 
-    /** Clears attempts and references; settings stay. */
+    /** Clears attempts, references and their audio; settings stay. */
     async deleteAll(): Promise<void> {
-      await transact(db, [ATTEMPTS, REFERENCES], "readwrite", async (tx) => {
-        await Promise.all([request(tx.objectStore(ATTEMPTS).clear()), request(tx.objectStore(REFERENCES).clear())]);
+      await transact(db, [ATTEMPTS, REFERENCES, AUDIO], "readwrite", async (tx) => {
+        await Promise.all([ATTEMPTS, REFERENCES, AUDIO].map((name) => request(tx.objectStore(name).clear())));
       });
     },
 
+    /** Saving with `active: true` deactivates the other references of that call type. */
     async saveReference(reference: ReferenceRecord): Promise<void> {
       assertRecord(reference);
-      const stored = await toStored(reference);
-      await transact(db, [REFERENCES], "readwrite", (tx) => request(tx.objectStore(REFERENCES).put(stored)));
+      const { meta, audioRow } = await splitRecord(reference);
+      await transact(db, [REFERENCES, AUDIO], "readwrite", async (tx) => {
+        const store = tx.objectStore(REFERENCES);
+        const writes: Promise<unknown>[] = [request(store.put(meta)), request(tx.objectStore(AUDIO).put(audioRow))];
+        if (meta.active) {
+          const siblings = await getAllMeta<ReferenceMeta>(tx, REFERENCES, meta.callType);
+          for (const other of siblings) {
+            if (other.active && other.id !== meta.id) writes.push(request(store.put({ ...other, active: false })));
+          }
+        }
+        await Promise.all(writes);
+      });
     },
 
-    /** Newest first. */
+    /** Metadata only, newest first. */
     listReferences,
 
     /**
@@ -232,23 +269,31 @@ export function createStore(db: IDBDatabase) {
     async setActiveReference(callType: CallType, id: string | null): Promise<void> {
       assertCallType(callType);
       await transact(db, [REFERENCES], "readwrite", async (tx) => {
-        const stored = await getAllStored<Stored<ReferenceRecord>>(tx, REFERENCES, callType);
-        if (id !== null && !stored.some((r) => r.id === id)) {
+        const references = await getAllMeta<ReferenceMeta>(tx, REFERENCES, callType);
+        if (id !== null && !references.some((r) => r.id === id)) {
           throw new Error(`No ${callType} reference with id ${id}`);
         }
         const store = tx.objectStore(REFERENCES);
-        const changed = stored.filter((r) => r.active !== (r.id === id));
+        const changed = references.filter((r) => r.active !== (r.id === id));
         await Promise.all(changed.map((r) => request(store.put({ ...r, active: r.id === id }))));
       });
     },
 
+    /** The active reference of that call type with its audio, or undefined if none is active. */
     async getActiveReference(callType: CallType): Promise<ReferenceRecord | undefined> {
-      const references = await listReferences(callType);
-      return references.find((r) => r.active);
+      assertCallType(callType);
+      return transact(db, [REFERENCES, AUDIO], "readonly", async (tx) => {
+        const references = await getAllMeta<ReferenceMeta>(tx, REFERENCES, callType);
+        const active = references.filter((r) => r.active).sort(newestFirst)[0];
+        if (active === undefined) return undefined;
+        const row = await request(tx.objectStore(AUDIO).get(active.id) as IDBRequest<AudioRow | undefined>);
+        if (row === undefined) throw new Error(`Audio is missing for reference ${active.id}`);
+        return { ...active, audio: audioBlob(row) };
+      });
     },
 
     async deleteReference(id: string): Promise<void> {
-      await transact(db, [REFERENCES], "readwrite", (tx) => deleteKeys(tx, REFERENCES, [id]));
+      await transact(db, [REFERENCES, AUDIO], "readwrite", (tx) => deleteWithAudio(tx, REFERENCES, [id]));
     },
 
     /** Flatness of the highest-scoring attempt (ties: newest) that has scores and measurements; null if none. */
@@ -277,6 +322,11 @@ export function createStore(db: IDBDatabase) {
     async setSetting(key: string, value: unknown): Promise<void> {
       const row: SettingRow = { key, value };
       await transact(db, [SETTINGS], "readwrite", (tx) => request(tx.objectStore(SETTINGS).put(row)));
+    },
+
+    /** Closes the connection; every later call rejects. */
+    close(): void {
+      db.close();
     },
   };
 }
