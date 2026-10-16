@@ -2,13 +2,13 @@
 
 Usage:  python scripts/make_assets.py <source_dir> <repo_root>
 
-One-time setup (numpy and soundfile are not part of the app; install them into a
-throwaway folder with a SHORT path, because long paths break the DLL load on Windows):
+One-time setup: numpy, soundfile and pillow (pillow only for --icons) are not part
+of the app. Install them into a temporary target directory with a SHORT path (long
+paths break the DLL load on Windows), point PYTHONPATH at it, run the script, then
+delete the directory:
 
-    python -m pip install -q --target C:/Users/Jimmy/AppData/Local/Temp/dct/lib numpy soundfile
-    PYTHONPATH=C:/Users/Jimmy/AppData/Local/Temp/dct/lib \
-        python scripts/make_assets.py downloads/hens .
-    rm -rf C:/Users/Jimmy/AppData/Local/Temp/dct
+    python -m pip install -q --target <short-temp-dir> numpy soundfile pillow
+    PYTHONPATH=<short-temp-dir> python scripts/make_assets.py downloads/hens .
 
 <source_dir> holds the original files (XC964309.wav, XC11494.mp3, ...). They are
 treated as untrusted data: this script only reads them, as audio, via libsndfile.
