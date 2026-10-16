@@ -4,11 +4,12 @@ import { getDefaultStore, type ReferenceMeta } from "../../storage/db";
 import { callSwitcher } from "../callSwitcher";
 import { decodeToMono, type DecodedAudio } from "../decode";
 import { button, el } from "../dom";
-import { checkImportFile } from "../importAudio";
+import { checkImportDuration, checkImportFile, probeDurationS } from "../importAudio";
 import { CALL_NAMES } from "../labels";
 import { ANALYZING_TEXT, clearStatus, errorDetail, renderStatus, unexpectedErrorMessage, type StatusMessage } from "../messages";
 import { analyzeWithTimeout } from "../pipeline";
-import { MAX_RECORDING_S, RecordingControl } from "../recordingControl";
+import { MAX_RECORDING_S } from "../limits";
+import { RecordingControl } from "../recordingControl";
 import { routeHref } from "../router";
 import { formatAttemptDate } from "./history/model";
 import {
@@ -323,7 +324,10 @@ class ReferencesScreen {
     await this.runBusy(this.addStatus, () => this.importFile(file));
   }
 
-  /** Checks the file before reading it, decodes and analyses its first 15 s; a bad file leaves the target as it was. */
+  /**
+   * Checks the file's size, type and length before decoding it, then decodes and analyses its first 15 s; a bad file
+   * leaves the target as it was.
+   */
   private async importFile(file: File): Promise<void> {
     this.player.stop();
     this.discardCandidate();
@@ -333,6 +337,12 @@ class ReferencesScreen {
       return;
     }
     this.showAdd({ text: READING_TEXT });
+    const tooLong = checkImportDuration(await probeDurationS(file));
+    if (this.disposed) return;
+    if (tooLong !== null) {
+      this.showAdd({ text: tooLong, notes: [UNCHANGED_TEXT], error: true });
+      return;
+    }
     let decoded: DecodedAudio;
     try {
       decoded = await decodeToMono(file, MAX_RECORDING_S);

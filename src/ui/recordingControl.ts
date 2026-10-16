@@ -2,6 +2,7 @@ import { liveResonanceHz } from "../analysis/noteFeatures";
 import { AutoStop } from "../capture/autostop";
 import { startRecording, type RecordingResult, type RecordingSession } from "../capture/recorder";
 import { button } from "./dom";
+import { MAX_RECORDING_S } from "./limits";
 import { LiveView } from "./liveView";
 import {
   ANALYZING_TEXT,
@@ -18,9 +19,6 @@ import type { Cleanup } from "./screens/screen";
  */
 
 export type RecordingPhase = "idle" | "starting" | "recording" | "finishing" | "processing";
-
-/** The longest recording, in seconds. An imported reference is cut to the same length. */
-export const MAX_RECORDING_S = 15;
 
 const RECORD_LABEL = "Record";
 const STOP_LABEL = "Stop";

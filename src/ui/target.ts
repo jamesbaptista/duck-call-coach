@@ -1,5 +1,6 @@
 import type { CallType } from "../analysis/types";
 import { getDefaultStore, type ReferenceRecord } from "../storage/db";
+import { pastPlaybackLimit } from "./limits";
 
 /** What Play target plays: the active reference's recording, or a bundled hen clip. */
 export interface TargetClip {
@@ -90,7 +91,9 @@ function isAbortError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 
-/** Drives a Play/Stop button for one clip. Playback errors go to `onError` as a plain sentence. */
+/**
+ * Drives a Play/Stop button for one clip, stopping at 15 s. Playback errors go to `onError` as a plain sentence.
+ */
 export class ClipPlayer {
   private readonly audio = new Audio();
   private clip: TargetClip | null = null;
@@ -102,6 +105,10 @@ export class ClipPlayer {
   ) {
     this.audio.preload = "none";
     this.audio.addEventListener("ended", () => this.showStopped());
+    // A reference may be a long imported file; only its first 15 s are scored, so only those are played.
+    this.audio.addEventListener("timeupdate", () => {
+      if (pastPlaybackLimit(this.audio.currentTime)) this.stop();
+    });
     button.textContent = labels.play;
     button.disabled = true;
     button.addEventListener("click", () => this.toggle());

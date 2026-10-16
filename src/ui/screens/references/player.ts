@@ -1,4 +1,5 @@
 import { getDefaultStore } from "../../../storage/db";
+import { pastPlaybackLimit } from "../../limits";
 
 /**
  * Plays one saved reference at a time from the list. A reference's recording is read from storage only when its
@@ -25,6 +26,10 @@ export class ReferencePlayer {
   constructor(private readonly onError: (message: string) => void) {
     this.audio.preload = "none";
     this.audio.addEventListener("ended", () => this.showStopped());
+    // An imported reference may be long; only its first 15 s are scored, so only those are played.
+    this.audio.addEventListener("timeupdate", () => {
+      if (pastPlaybackLimit(this.audio.currentTime)) this.stop();
+    });
   }
 
   /** Plays reference `id`, or stops it when `button` is the one already playing. Never rejects. */
