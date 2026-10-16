@@ -1,0 +1,16 @@
+{
+  "id": "/duck-call-coach/",
+  "name": "Duck Call Coach",
+  "short_name": "Duck Coach",
+  "description": "Record your mallard hen call and get a score and coaching tips.",
+  "start_url": "/duck-call-coach/",
+  "scope": "/duck-call-coach/",
+  "display": "standalone",
+  "theme_color": "#2f4a2c",
+  "background_color": "#f4f1e8",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -16,6 +16,8 @@ treated as untrusted data: this script only reads them, as audio, via libsndfile
 Outputs under <repo_root>:
   tests/fixtures/*.wav   16-bit mono WAV at the source sample rate, original level.
   public/clips/*.mp3     128 kbps mono MP3, normalized to -1 dBFS peak.
+  public/icons/*.png     (--icons) 192 and 512 px app icons, maskable: everything but the
+                         background sits inside the central circle of 80% diameter.
 
 Recordings with a no-derivatives (ND) license are deliberately absent (see CREDITS.md).
 """
@@ -104,7 +106,75 @@ def main(source_dir: Path, repo_root: Path) -> None:
             raise ValueError(f"{name}: expected about {MP3_BITRATE_KBPS} kbps, got {kbps:.0f}")
 
 
+# App icons: a duck calling, on the marsh-green background. Colours come from styles.css.
+ICON_SIZES = (192, 512)
+ICON_BACKGROUND = "#2f4a2c"  # --primary (light)
+ICON_HEAD = "#f4f1e8"  # --bg (light)
+ICON_ACCENT = "#e57a45"  # --record (dark)
+ICON_EYE = "#1b261c"  # --fg (light)
+# Maskable icons may be cropped to a circle of 80% of the width, so all artwork stays inside it.
+MASKABLE_SAFE_RADIUS = 0.4
+# Draw large and scale down, for smooth edges.
+ICON_SUPERSAMPLE = 4
+
+
+def draw_icon(size: int):
+    """The icon at size x size px. Shapes are laid out on a unit square, facing right."""
+    from PIL import Image, ImageDraw
+
+    scale = size * ICON_SUPERSAMPLE
+    image = Image.new("RGB", (scale, scale), ICON_BACKGROUND)
+    draw = ImageDraw.Draw(image)
+
+    def box(x0: float, y0: float, x1: float, y1: float) -> list[float]:
+        return [x0 * scale, y0 * scale, x1 * scale, y1 * scale]
+
+    def points(*xy: tuple[float, float]) -> list[tuple[float, float]]:
+        return [(x * scale, y * scale) for x, y in xy]
+
+    draw.ellipse(box(0.16, 0.52, 0.66, 0.80), fill=ICON_HEAD)  # body
+    draw.polygon(points((0.14, 0.52), (0.30, 0.58), (0.20, 0.66)), fill=ICON_HEAD)  # tail
+    draw.polygon(points((0.46, 0.38), (0.61, 0.38), (0.62, 0.60), (0.43, 0.62)), fill=ICON_HEAD)  # neck
+    draw.ellipse(box(0.43, 0.25, 0.65, 0.47), fill=ICON_HEAD)  # head
+    draw.polygon(points((0.61, 0.345), (0.74, 0.36), (0.74, 0.43), (0.61, 0.425)), fill=ICON_ACCENT)  # bill
+    draw.ellipse(box(0.71, 0.36, 0.77, 0.43), fill=ICON_ACCENT)  # spoon-shaped bill tip
+    draw.ellipse(box(0.537, 0.312, 0.573, 0.348), fill=ICON_EYE)
+    for radius in (0.045, 0.085):  # the call, coming off the bill
+        draw.arc(box(0.77 - radius, 0.395 - radius, 0.77 + radius, 0.395 + radius), -45, 45,
+                 fill=ICON_ACCENT, width=round(0.025 * scale))
+    return image.resize((size, size), Image.Resampling.LANCZOS)
+
+
+def check_maskable(image) -> None:
+    """Every pixel outside the safe circle must be plain background."""
+    import numpy
+
+    pixels = numpy.asarray(image, dtype=numpy.int16)
+    size = pixels.shape[0]
+    background = numpy.array([int(ICON_BACKGROUND[i:i + 2], 16) for i in (1, 3, 5)], dtype=numpy.int16)
+    differs = numpy.abs(pixels - background).max(axis=2) > 2
+    ys, xs = numpy.nonzero(differs)
+    centre = (size - 1) / 2
+    outside = numpy.hypot(xs - centre, ys - centre) > MASKABLE_SAFE_RADIUS * size
+    if outside.any():
+        raise ValueError(f"icon {size}: {int(outside.sum())} artwork pixels outside the maskable safe zone")
+
+
+def make_icons(repo_root: Path) -> None:
+    icons_dir = repo_root / "public" / "icons"
+    icons_dir.mkdir(parents=True, exist_ok=True)
+    for size in ICON_SIZES:
+        image = draw_icon(size)
+        check_maskable(image)
+        out_path = icons_dir / f"icon-{size}.png"
+        image.save(out_path, format="PNG", optimize=True)
+        print(f"icon {out_path.name}: {size} x {size} px, {out_path.stat().st_size} bytes")
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         sys.exit(__doc__)
-    main(Path(sys.argv[1]), Path(sys.argv[2]))
+    if sys.argv[1] == "--icons":
+        make_icons(Path(sys.argv[2]))
+    else:
+        main(Path(sys.argv[1]), Path(sys.argv[2]))

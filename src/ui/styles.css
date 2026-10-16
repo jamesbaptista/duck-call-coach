@@ -321,6 +321,24 @@ h2 {
   background: var(--surface);
 }
 
+/* Home: Add to Home Screen offer (Android) or one-line hint (iPhone) */
+
+.install-offer {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.install-offer p {
+  margin: 0 0 0.75rem;
+}
+
+.install-offer > :last-child {
+  margin-bottom: 0;
+}
+
 .score-card {
   margin: 0.75rem 0 1rem;
   padding: 1rem;

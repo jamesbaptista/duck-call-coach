@@ -2,6 +2,8 @@ import type { CallType } from "../../analysis/types";
 import { loadTargets } from "../../scoring/score";
 import { getDefaultStore, storageEstimate } from "../../storage/db";
 import { el } from "../dom";
+import { getInstallController } from "../install";
+import { installOfferSection } from "../installOffer";
 import { CALL_NAMES, confidenceText, HOME_CALL_ORDER } from "../labels";
 import { routeHref, type Route } from "../router";
 import { summarizeScores, summaryLines } from "../scoreSummary";
@@ -57,10 +59,12 @@ export const renderHome: RenderScreen = (root) => {
   }
 
   const banner = storageWarningBanner();
+  const install = installOfferSection(getInstallController());
   root.append(
     el("h1", { tabindex: "-1" }, "Duck Call Coach"),
     banner,
     el("p", { class: "lead" }, "Pick a call to practice. You'll get a score and tips after each try."),
+    install.element,
     list,
     el(
       "nav",
@@ -83,5 +87,6 @@ export const renderHome: RenderScreen = (root) => {
   });
   return () => {
     disposed = true;
+    install.dispose();
   };
 };
