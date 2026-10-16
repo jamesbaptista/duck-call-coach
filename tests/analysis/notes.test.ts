@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { findNotes, noiseFloorDb } from "../../src/analysis/notes";
+import { frameLevelsDb } from "../../src/analysis/frames";
+import { highPass } from "../../src/analysis/filter";
+import { ANALYSIS } from "../../src/config/analysis";
+import { readWav } from "../helpers/wav";
 
 const FLOOR_DB = -60;
 
@@ -133,5 +137,29 @@ describe("findNotes", () => {
     // -45 dB is above the on/off thresholds (so inside the note) but below peak - 18 = -38 dB.
     const notes = findNotes(levels(quiet(10), [5, -45], [20, -20], [5, -45], quiet(10)), FLOOR_DB);
     expect(notes).toEqual([{ startFrame: 15, endFrame: 35 }]);
+  });
+});
+
+describe("quacks_4 fixture", () => {
+  // -25.7 dB is the research script's 10th-percentile floor over the full 14.2 s XC11494 recording;
+  // the 1.6 s fixture is too call-dense for its own percentile floor.
+  const RESEARCH_FLOOR_DB = -25.7;
+
+  function fixtureLevels(): Float32Array {
+    const { samples, sampleRate } = readWav("tests/fixtures/quacks_4.wav");
+    return frameLevelsDb(highPass(samples, sampleRate), sampleRate);
+  }
+
+  it("finds four notes at the known onsets", () => {
+    const notes = findNotes(fixtureLevels(), RESEARCH_FLOOR_DB);
+    const onsets = notes.map((note) => note.startFrame * ANALYSIS.hopS);
+    expect(onsets).toHaveLength(4);
+    [0.15, 0.52, 0.92, 1.27].forEach((expected, i) => {
+      expect(Math.abs(onsets[i] - expected)).toBeLessThanOrEqual(0.02);
+    });
+  });
+
+  it("documents that the clip's own 10th-percentile floor is higher than the research floor", () => {
+    expect(noiseFloorDb(fixtureLevels())).toBeGreaterThan(-24);
   });
 });
