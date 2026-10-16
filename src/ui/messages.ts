@@ -39,9 +39,20 @@ export function renderStatus(region: HTMLElement, message: StatusMessage): void 
   region.classList.toggle("error", message.error === true);
 }
 
+/** Empties a status region, for example when a new action makes its message out of date. */
+export function clearStatus(region: HTMLElement): void {
+  region.replaceChildren();
+  region.classList.remove("error");
+}
+
 /** "Name: message" for any error, shown in small print under a friendly sentence. */
 export function errorDetail(error: unknown): string {
   return describeCaptureError(error).detail;
+}
+
+/** The message for a bug or other surprise, so nothing ever fails silently. */
+export function unexpectedErrorMessage(error: unknown): StatusMessage {
+  return { text: "Something went wrong. Try again.", detail: errorDetail(error), error: true };
 }
 
 /** The message for a recording that couldn't start or finish. */

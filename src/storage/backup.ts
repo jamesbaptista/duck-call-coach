@@ -2,7 +2,7 @@ import { encodeBase64 } from "./base64";
 import { BACKUP_FORMAT, BACKUP_VERSION, BackupError, MAX_BACKUP_CHARS, readBackup, type BackupData } from "./backupSchema";
 import type { Store } from "./db";
 
-export { BackupError, MAX_AUDIO_BYTES, MAX_BACKUP_CHARS, type BackupData } from "./backupSchema";
+export { BackupError, isAudioMimeType, MAX_AUDIO_BYTES, MAX_BACKUP_CHARS, type BackupData } from "./backupSchema";
 
 const BYTE_ORDER_MARK = 0xfeff;
 const BYTES_PER_MB = 1024 * 1024;

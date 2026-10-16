@@ -2,7 +2,7 @@ import { BackupError, exportBackup, importBackup, isBackupFileTooBig, parseBacku
 import { getDefaultStore } from "../../../storage/db";
 import { backupFileName } from "../../backupFile";
 import { button, el } from "../../dom";
-import { errorDetail, renderStatus, type StatusMessage } from "../../messages";
+import { clearStatus, errorDetail, renderStatus, type StatusMessage } from "../../messages";
 import { restoreResultText } from "./model";
 
 /**
@@ -30,15 +30,11 @@ export interface DataSectionOptions {
   isDisposed: () => boolean;
 }
 
-/** Hands the file to the browser's download, then lets the object URL go once the click has started it. */
-function download(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = el("a", { href: url, download: fileName, hidden: "" });
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
+/**
+ * How long a backup's object URL is kept after its download starts. Revoking it at once can abort the download on
+ * mobile browsers; leaving the screen revokes it sooner.
+ */
+const DOWNLOAD_URL_LIFETIME_MS = 60_000;
 
 function failure(text: string, error: unknown): StatusMessage {
   if (error instanceof BackupError) return { text: error.message, error: true };
@@ -66,6 +62,8 @@ export class DataSection {
   private readonly backupStatus = el("div", { class: "status", role: "status", "aria-live": "polite" });
   private readonly deleteStatus = el("div", { class: "status", role: "status", "aria-live": "polite" });
   private busy = false;
+  /** Object URLs of backups handed to the browser, each with the timer that revokes it. */
+  private readonly downloadUrls = new Map<string, number>();
 
   constructor(private readonly options: DataSectionOptions) {
     this.element = el("div", { class: "data-section" }, this.backupView(), this.deleteView());
@@ -80,6 +78,29 @@ export class DataSection {
       void this.run(() => this.deleteEverything(), DELETE_FAILED_TEXT, this.deleteStatus);
     });
     this.updateControls();
+  }
+
+  /** Revokes every backup URL still held; History calls this when the screen is left. */
+  dispose(): void {
+    for (const [url, timer] of this.downloadUrls) {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+    }
+    this.downloadUrls.clear();
+  }
+
+  /** Hands the file to the browser's download. Its URL is revoked after a minute, or sooner if the screen is left. */
+  private download(blob: Blob, fileName: string): void {
+    const url = URL.createObjectURL(blob);
+    const link = el("a", { href: url, download: fileName, hidden: "" });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    const timer = window.setTimeout(() => {
+      this.downloadUrls.delete(url);
+      URL.revokeObjectURL(url);
+    }, DOWNLOAD_URL_LIFETIME_MS);
+    this.downloadUrls.set(url, timer);
   }
 
   private backupView(): HTMLElement {
@@ -124,6 +145,9 @@ export class DataSection {
   private async run(action: () => Promise<void>, failedText: string, region: HTMLElement): Promise<void> {
     if (this.busy) return;
     this.setBusy(true);
+    // A new action makes the messages about earlier ones out of date.
+    clearStatus(this.backupStatus);
+    clearStatus(this.deleteStatus);
     try {
       await action();
     } catch (error) {
@@ -138,7 +162,7 @@ export class DataSection {
     const blob = await exportBackup(await getDefaultStore());
     if (this.options.isDisposed()) return;
     const fileName = backupFileName(new Date());
-    download(blob, fileName);
+    this.download(blob, fileName);
     renderStatus(this.backupStatus, {
       text: `Your backup is downloading as ${fileName}. Keep a copy somewhere off this phone.`,
     });

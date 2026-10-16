@@ -4,7 +4,7 @@ import { getDefaultStore, type AttemptRecord } from "../storage/db";
 import { forgetUnsavedAttempt, rememberUnsavedAttempt } from "./session";
 import { isTimeout, withTimeout } from "./timeout";
 import { buildAttempt, buildFailedAttempt, type AttemptRecording, type ScoringReference } from "./attempt";
-import { decodeToMono } from "./decode";
+import { decodeToMono, type DecodedAudio } from "./decode";
 
 /**
  * From recorded samples to a saved attempt. A failed (or too slow) analysis and a failed save come back as
@@ -45,6 +45,23 @@ async function loadScoringInputs(callType: CallType): Promise<ScoringInputs> {
 }
 
 /**
+ * Runs the analysis in the worker, giving up after ANALYSIS_TIMEOUT_MS: the stuck worker is then thrown away so the
+ * next analysis gets a fresh one. `pcm` is transferred to the worker, so it is unusable afterwards.
+ */
+export async function analyzeWithTimeout(
+  pcm: Float32Array,
+  sampleRate: number,
+  callType: CallType,
+): Promise<AnalysisResult> {
+  try {
+    return await withTimeout(analyzeInWorker(pcm, sampleRate, callType), ANALYSIS_TIMEOUT_MS);
+  } catch (error) {
+    if (isTimeout(error)) resetAnalysisWorker("The analysis took too long and was stopped.");
+    throw error;
+  }
+}
+
+/**
  * Analyses the samples and builds the attempt. `pcm` is transferred to the worker, so it is unusable afterwards.
  * If the analysis fails, the attempt keeps the recording with no scores and a note (see buildFailedAttempt).
  */
@@ -58,9 +75,8 @@ export async function analyzeToAttempt(
   const inputs = loadScoringInputs(callType);
   let analysis: AnalysisResult;
   try {
-    analysis = await withTimeout(analyzeInWorker(pcm, sampleRate, callType), ANALYSIS_TIMEOUT_MS);
+    analysis = await analyzeWithTimeout(pcm, sampleRate, callType);
   } catch (error) {
-    if (isTimeout(error)) resetAnalysisWorker("The analysis took too long and was stopped.");
     const { reference } = await inputs;
     return { attempt: buildFailedAttempt({ ...identity, callType, recording, reference, error }), failure: { error } };
   }
@@ -75,7 +91,7 @@ export async function retryAnalysis(attempt: AttemptRecord): Promise<AnalyzedAtt
     durationMs: attempt.durationMs,
     processing: { processingOff: attempt.processingOff },
   };
-  let decoded: { pcm: Float32Array; sampleRate: number };
+  let decoded: DecodedAudio;
   try {
     decoded = await decodeToMono(attempt.audio);
   } catch (error) {

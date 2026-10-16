@@ -1,9 +1,10 @@
 import type { CallType } from "../../analysis/types";
 import { getDefaultStore, storageEstimate, type AttemptMeta } from "../../storage/db";
+import { callSwitcher } from "../callSwitcher";
 import { HISTORY_CHART_PLOT, historyChartGeometry, renderHistoryChart } from "../charts/historyChart";
 import { button, el } from "../dom";
-import { CALL_NAMES, HOME_CALL_ORDER } from "../labels";
-import { errorDetail, renderStatus } from "../messages";
+import { CALL_NAMES } from "../labels";
+import { clearStatus, errorDetail, renderStatus } from "../messages";
 import { routeHref } from "../router";
 import { showStorageWarning, storageUseText, storageWarningBanner } from "../storageUse";
 import { DataSection } from "./history/backup";
@@ -13,16 +14,6 @@ import type { Cleanup, RenderScreen } from "./screen";
 const LOAD_FAILED_TEXT = "Your attempts couldn't be loaded.";
 const DELETE_CALL_FAILED_TEXT = "Couldn't delete these attempts. Try again.";
 const NOT_ON_CHART_NOTE = "Attempts that weren't judged or couldn't be analysed aren't on the chart.";
-
-/** Four links, one per call; each opens History for that call, and the current one is marked. */
-function callSwitcher(current: CallType): HTMLElement {
-  const links = HOME_CALL_ORDER.map((callType) => {
-    const props: Record<string, string> = { class: "switch-link", href: routeHref({ name: "history", callType }) };
-    if (callType === current) props["aria-current"] = "page";
-    return el("li", {}, el("a", props, CALL_NAMES[callType]));
-  });
-  return el("nav", { "aria-label": "Choose a call" }, el("ul", { class: "call-switcher" }, ...links));
-}
 
 /** The History screen for one call: progress chart, attempt list and storage, plus Back up / Restore for everything. */
 class HistoryScreen {
@@ -40,6 +31,7 @@ class HistoryScreen {
   private readonly callStatus = el("div", { class: "status", role: "status", "aria-live": "polite" });
   private readonly storageUse = el("p", {});
   private readonly storageSection: HTMLElement;
+  private readonly data: DataSection;
 
   constructor(
     root: HTMLElement,
@@ -49,13 +41,13 @@ class HistoryScreen {
     this.deleteCallButton = button(`Delete all ${this.callName} attempts`, { class: "button danger", hidden: "" });
     this.deleteCallButton.addEventListener("click", () => void this.deleteCall());
     this.storageSection = el("section", { hidden: "" }, el("h2", {}, "Storage on this phone"), this.storageUse);
-    const data = new DataSection({ onChanged: () => this.onDataChanged(), isDisposed: () => this.disposed });
+    this.data = new DataSection({ onChanged: () => this.onDataChanged(), isDisposed: () => this.disposed });
 
     root.append(
       el("a", { class: "back-link", href: routeHref({ name: "home" }), "aria-label": "Back to Home" }, "‹ Home"),
       el("h1", { tabindex: "-1" }, "History"),
       this.banner,
-      callSwitcher(callType),
+      callSwitcher("history", callType),
       el("section", {}, el("h2", {}, `${this.callName} scores over time`), this.chartBody),
       el(
         "section",
@@ -66,19 +58,19 @@ class HistoryScreen {
         this.callStatus,
       ),
       this.storageSection,
-      data.element,
+      this.data.element,
     );
     this.refresh();
   }
 
   readonly cleanup: Cleanup = () => {
     this.disposed = true;
+    this.data.dispose();
   };
 
   /** A restore or Delete everything changed what's stored, so an earlier message about this call is out of date. */
   private onDataChanged(): void {
-    this.callStatus.replaceChildren();
-    this.callStatus.classList.remove("error");
+    clearStatus(this.callStatus);
     this.refresh();
   }
 

@@ -38,6 +38,11 @@ const MAX_EXPORTED_AT_LENGTH = 40;
 const VALID_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const VALID_AUDIO_MIME_TYPE = /^audio\/[a-z0-9.+-]+(;.*)?$/;
 
+/** True for a media type a backup accepts for a recording, such as "audio/webm;codecs=opus". */
+export function isAudioMimeType(mimeType: string): boolean {
+  return mimeType.length <= MAX_MIME_TYPE_LENGTH && VALID_AUDIO_MIME_TYPE.test(mimeType);
+}
+
 /** Thrown for any problem with a backup file; the message is plain English and safe to show. */
 export class BackupError extends Error {
   constructor(message: string) {

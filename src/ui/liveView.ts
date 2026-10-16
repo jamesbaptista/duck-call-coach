@@ -1,5 +1,5 @@
-import { drawTrace, pruneTrace, traceGeometry, type TraceColors, type TracePoint } from "../../charts/liveTrace";
-import { el } from "../../dom";
+import { drawTrace, pruneTrace, traceGeometry, type TraceColors, type TracePoint } from "./charts/liveTrace";
+import { el } from "./dom";
 
 /** The live display while recording: a level bar and a scrolling resonance line. */
 

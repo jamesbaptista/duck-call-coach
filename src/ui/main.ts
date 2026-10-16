@@ -1,10 +1,11 @@
 import "./styles.css";
 import { el } from "./dom";
 import { parseRoute, type Route } from "./router";
+import { renderCredits } from "./screens/credits";
 import { renderHistory } from "./screens/history";
 import { renderHome } from "./screens/home";
-import { renderPlaceholder } from "./screens/placeholder";
 import { renderPractice } from "./screens/practice";
+import { renderReferences } from "./screens/references";
 import { renderResults } from "./screens/results";
 import type { Cleanup } from "./screens/screen";
 
@@ -18,8 +19,10 @@ function renderRoute(root: HTMLElement, route: Route): Cleanup {
       return renderResults(root, route);
     case "history":
       return renderHistory(root, route);
-    default:
-      return renderPlaceholder(root, route);
+    case "references":
+      return renderReferences(root, route);
+    case "credits":
+      return renderCredits(root, route);
   }
 }
 

@@ -677,3 +677,111 @@ h2 {
   color: var(--fg);
   font: inherit;
 }
+
+/* References */
+
+.active-target {
+  font-weight: 600;
+}
+
+.reference-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.reference-row {
+  padding: 0.75rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.reference-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.reference-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.reference-date {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.active-badge {
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.reference-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: 0.5rem;
+}
+
+.reference-actions .button {
+  margin: 0;
+  padding: 0.5rem;
+}
+
+.name-form {
+  margin: 0.5rem 0;
+}
+
+.name-form label {
+  font-weight: 600;
+}
+
+/* Credits */
+
+.credit-list {
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credit {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.credit h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.credit a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+}
+
+.credit dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 0 0.75rem;
+  margin: 0;
+}
+
+.credit dt {
+  color: var(--muted);
+}
+
+.credit dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
