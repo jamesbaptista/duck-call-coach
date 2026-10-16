@@ -142,3 +142,11 @@ nasal tone, hard or mushy note starts, weak air support. These need real human r
   than ~20 dB below the loudest note, which carry stray high sounds.
 - Rasp: score it against the user's own reference or best attempt, or as a trend over
   sessions, not against a fixed number.
+
+## TypeScript port: golden-test notes (2026-10-16)
+
+- The quack-mode golden test moved from `quacks_4.wav` to `steady_quacks.wav` analysed as a quack (expect 1 note, first note 170-340 ms, resonance 1800-2150 Hz).
+- `quacks_4.wav` is a 1.6 s clip packed with calls over a background flock. Its own 10th-percentile floor is -19.96 dB, against -25.7 dB for the full research recording. Against that floor the analyzer finds 3 notes (onsets 0.22 / 0.57 / 0.97 s, 140-190 ms), and the loudest peaks only 12.7 dB above the floor, so the recording reads as `too_quiet`. With the research floor the same code reproduces the 4 research notes (0.15 / 0.52 / 0.92 / 1.27 s, 220-260 ms).
+- The first note scored in `steady_quacks.wav` as a quack is 170 ms, exactly on the lower bound of that test and just under the 180-375 ms built-in quack target.
+- Product risk for the tuning round: dense recordings raise the floor. A user who quacks over and over into a short recording raises their own percentile floor, which shortens the notes and can fail the 15 dB SNR gate.
+- Measured: hail_a 9 notes, 235 ms spacing, CV 0.037, 1945 Hz, fade 4.8 dB, squeak 0.21; steady_quacks (hail) 19 notes, 507 ms; steady_quacks (quack) 170 ms, 2005 Hz; chuckle_a 16 notes, median 70 ms, burst 130 ms; hail_b 4 notes, 350 ms; quacks_4 (quack) too_quiet, 140 ms, 1884 Hz.
