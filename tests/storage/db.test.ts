@@ -119,7 +119,7 @@ describe("openDb", () => {
   it("creates the four stores with the callType indexes on attempts and references", () => {
     expect([...db.objectStoreNames].sort()).toEqual(["attempts", "audio", "references", "settings"]);
     const tx = db.transaction(["attempts", "references", "settings", "audio"], "readonly");
-    expect(tx.objectStore("audio").keyPath).toBe("id");
+    expect(tx.objectStore("audio").keyPath).toBe("key");
     expect(tx.objectStore("attempts").keyPath).toBe("id");
     expect([...tx.objectStore("attempts").indexNames]).toEqual(["callType"]);
     expect(tx.objectStore("references").keyPath).toBe("id");
@@ -222,13 +222,13 @@ describe("audio is kept apart from metadata", () => {
   it("getAudio returns the bytes and mime type of an attempt or a reference", async () => {
     await store.saveAttempt(attempt("a1", "quack", 1000, { mimeType: "audio/ogg" }));
     await store.saveReference(reference("r1", "hail", 1000));
-    const a = await store.getAudio("a1");
+    const a = await store.getAudio("attempt", "a1");
     expect(a?.type).toBe("audio/ogg");
     expect(await bytesOf(a!)).toEqual([1, 2, 3, 4]);
-    const r = await store.getAudio("r1");
+    const r = await store.getAudio("reference", "r1");
     expect(r?.type).toBe("audio/mp4");
     expect(await bytesOf(r!)).toEqual([9, 8, 7]);
-    expect(await store.getAudio("missing")).toBeUndefined();
+    expect(await store.getAudio("attempt", "missing")).toBeUndefined();
   });
 
   it("getActiveReference returns the full record with its audio", async () => {
@@ -249,16 +249,16 @@ describe("audio is kept apart from metadata", () => {
 
     await store.deleteAttempt("q2");
     expect(await countRows("audio")).toBe(5);
-    expect(await store.getAudio("q2")).toBeUndefined();
+    expect(await store.getAudio("attempt", "q2")).toBeUndefined();
 
     await store.deleteAttemptsFor("hail");
     expect(await countRows("audio")).toBe(3);
-    expect(await store.getAudio("h1")).toBeUndefined();
-    expect(await store.getAudio("q1")).toBeDefined();
+    expect(await store.getAudio("attempt", "h1")).toBeUndefined();
+    expect(await store.getAudio("attempt", "q1")).toBeDefined();
 
     await store.deleteReference("r1");
     expect(await countRows("audio")).toBe(2);
-    expect(await store.getAudio("r1")).toBeUndefined();
+    expect(await store.getAudio("reference", "r1")).toBeUndefined();
 
     await store.setSetting("volume", 7);
     await store.deleteAll();
@@ -268,11 +268,59 @@ describe("audio is kept apart from metadata", () => {
     expect(await store.getSetting<number>("volume")).toBe(7);
   });
 
+  it("an attempt and a reference with the same id keep separate audio", async () => {
+    const attemptAudio = new Blob([new Uint8Array([1, 1])], { type: "audio/webm" });
+    await store.saveAttempt(attempt("same", "quack", 1000, { audio: attemptAudio }));
+    await store.saveReference(reference("same", "quack", 1000));
+    expect(await countRows("audio")).toBe(2);
+    expect(await bytesOf((await store.getAudio("attempt", "same"))!)).toEqual([1, 1]);
+    expect(await bytesOf((await store.getAudio("reference", "same"))!)).toEqual([9, 8, 7]);
+    expect(await bytesOf((await store.getAttempt("same"))!.audio)).toEqual([1, 1]);
+
+    await store.deleteReference("same");
+    expect(await store.getAudio("reference", "same")).toBeUndefined();
+    expect(await bytesOf((await store.getAudio("attempt", "same"))!)).toEqual([1, 1]);
+
+    await store.saveReference(reference("same", "quack", 1000));
+    await store.deleteAttempt("same");
+    expect(await store.getAudio("attempt", "same")).toBeUndefined();
+    expect(await bytesOf((await store.getAudio("reference", "same"))!)).toEqual([9, 8, 7]);
+  });
+
+  it("returns an empty Blob and audioMissing when the audio row is gone", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000, { mimeType: "audio/mp4" }));
+    await store.saveReference(reference("r1", "hail", 1000, true));
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("audio", "readwrite");
+      tx.objectStore("audio").clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    const loaded = await store.getAttempt("a1");
+    expect(loaded?.audioMissing).toBe(true);
+    expect(loaded?.audio.size).toBe(0);
+    expect(loaded?.audio.type).toBe("audio/mp4");
+    expect(loaded?.durationMs).toBe(2000);
+    const active = await store.getActiveReference("hail");
+    expect(active?.audioMissing).toBe(true);
+    expect(active?.audio.size).toBe(0);
+    expect(active?.name).toBe("Reference r1");
+    expect(await store.getAudio("attempt", "a1")).toBeUndefined();
+  });
+
+  it("does not store the audioMissing flag when a read-back record is saved again", async () => {
+    await store.saveAttempt(attempt("a1", "quack", 1000));
+    const loaded = (await store.getAttempt("a1"))!;
+    await store.saveAttempt({ ...loaded, audioMissing: true });
+    const [meta] = await store.listAttempts();
+    expect(meta).not.toHaveProperty("audioMissing");
+  });
+
   it("replacing a record overwrites its audio instead of adding a row", async () => {
     await store.saveAttempt(attempt("a1", "quack", 1000));
     await store.saveAttempt(attempt("a1", "quack", 1000, { audio: new Blob([new Uint8Array([5])], { type: "audio/webm" }) }));
     expect(await countRows("audio")).toBe(1);
-    expect(await bytesOf((await store.getAudio("a1"))!)).toEqual([5]);
+    expect(await bytesOf((await store.getAudio("attempt", "a1"))!)).toEqual([5]);
   });
 });
 
@@ -283,7 +331,7 @@ describe("references", () => {
     await store.saveReference(reference("r3", "quack", 3000));
     const hail = await store.listReferences("hail");
     expect(hail.map((r) => r.id)).toEqual(["r2", "r1"]);
-    const audio = await store.getAudio("r2");
+    const audio = await store.getAudio("reference", "r2");
     expect(audio?.type).toBe("audio/mp4");
     expect(await bytesOf(audio!)).toEqual([9, 8, 7]);
     expect(hail[0]!.notes).toEqual(reference("r2", "hail", 2000).notes);

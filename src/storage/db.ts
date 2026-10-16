@@ -14,6 +14,8 @@ export interface AttemptRecord {
   durationMs: number;
   processingOff: boolean;
   targetSource: "builtin" | "reference";
+  /** Set on records read back when the stored recording is gone; `audio` is then an empty Blob. Never stored. */
+  audioMissing?: true;
 }
 
 export interface ReferenceRecord {
@@ -26,19 +28,24 @@ export interface ReferenceRecord {
   measurements: CallMeasurements;
   notes: Note[];
   active: boolean;
+  /** Set on records read back when the stored recording is gone; `audio` is then an empty Blob. Never stored. */
+  audioMissing?: true;
 }
 
 /** An attempt without its audio: what lists and tiles need. */
-export type AttemptMeta = Omit<AttemptRecord, "audio">;
+export type AttemptMeta = Omit<AttemptRecord, "audio" | "audioMissing">;
 /** A reference without its audio. */
-export type ReferenceMeta = Omit<ReferenceRecord, "audio">;
+export type ReferenceMeta = Omit<ReferenceRecord, "audio" | "audioMissing">;
+
+/** Which store a recording belongs to. Attempts and references may share an id, so audio rows are keyed by both. */
+export type AudioKind = "attempt" | "reference";
 
 /**
  * Audio lives in its own store, as raw bytes rather than a Blob (ruling R6), so that reading
- * metadata never loads recordings. Rows are keyed by the owning attempt or reference id.
+ * metadata never loads recordings. Rows are keyed `<kind>:<id>`.
  */
 interface AudioRow {
-  id: string;
+  key: string;
   audioBytes: ArrayBuffer;
   mimeType: string;
 }
@@ -55,6 +62,10 @@ const REFERENCES = "references";
 const AUDIO = "audio";
 const SETTINGS = "settings";
 const CALL_TYPE_INDEX = "callType";
+
+function audioKey(kind: AudioKind, id: string): string {
+  return `${kind}:${id}`;
+}
 
 /** IDBRequest as a promise. Only use inside a transaction that is still active. */
 function request<T>(req: IDBRequest<T>): Promise<T> {
@@ -121,15 +132,22 @@ function assertRecord(record: { id: unknown; callType: unknown; audio: unknown }
 }
 
 /** Splits a record into its metadata row and its audio row. Reads the Blob, so call it before opening a transaction. */
-async function splitRecord<T extends { id: string; audio: Blob; mimeType: string }>(
+async function splitRecord<T extends { id: string; audio: Blob; mimeType: string; audioMissing?: true }>(
+  kind: AudioKind,
   record: T,
-): Promise<{ meta: Omit<T, "audio">; audioRow: AudioRow }> {
-  const { audio, ...meta } = record;
-  return { meta, audioRow: { id: record.id, audioBytes: await audio.arrayBuffer(), mimeType: record.mimeType } };
+): Promise<{ meta: Omit<T, "audio" | "audioMissing">; audioRow: AudioRow }> {
+  const { audio, audioMissing: _audioMissing, ...meta } = record;
+  const audioRow = { key: audioKey(kind, record.id), audioBytes: await audio.arrayBuffer(), mimeType: record.mimeType };
+  return { meta, audioRow };
 }
 
-function audioBlob(row: AudioRow): Blob {
-  return new Blob([row.audioBytes], { type: row.mimeType });
+/** Joins stored metadata with its audio row; a missing row gives an empty Blob and `audioMissing: true`. */
+function withAudio<M extends { mimeType: string }>(
+  meta: M,
+  row: AudioRow | undefined,
+): M & { audio: Blob; audioMissing?: true } {
+  if (row === undefined) return { ...meta, audio: new Blob([], { type: meta.mimeType }), audioMissing: true };
+  return { ...meta, audio: new Blob([row.audioBytes], { type: row.mimeType }) };
 }
 
 /** Newest first; ties broken by id descending so the order is deterministic. */
@@ -149,7 +167,7 @@ export function openDb(name: string = DEFAULT_DB_NAME): Promise<IDBDatabase> {
       const db = req.result;
       db.createObjectStore(ATTEMPTS, { keyPath: "id" }).createIndex(CALL_TYPE_INDEX, CALL_TYPE_INDEX);
       db.createObjectStore(REFERENCES, { keyPath: "id" }).createIndex(CALL_TYPE_INDEX, CALL_TYPE_INDEX);
-      db.createObjectStore(AUDIO, { keyPath: "id" });
+      db.createObjectStore(AUDIO, { keyPath: "key" });
       db.createObjectStore(SETTINGS, { keyPath: "key" });
     };
     req.onsuccess = () => {
@@ -186,52 +204,59 @@ export function createStore(db: IDBDatabase) {
   }
 
   /** Deletes the metadata rows and their audio rows. */
-  async function deleteWithAudio(tx: IDBTransaction, metaStore: string, ids: IDBValidKey[]): Promise<void> {
+  async function deleteWithAudio(
+    tx: IDBTransaction,
+    metaStore: string,
+    kind: AudioKind,
+    ids: IDBValidKey[],
+  ): Promise<void> {
     const meta = tx.objectStore(metaStore);
     const audio = tx.objectStore(AUDIO);
-    await Promise.all(ids.flatMap((id) => [request(meta.delete(id)), request(audio.delete(id))]));
+    await Promise.all(
+      ids.flatMap((id) => [request(meta.delete(id)), request(audio.delete(audioKey(kind, String(id))))]),
+    );
   }
 
   return {
     async saveAttempt(attempt: AttemptRecord): Promise<void> {
       assertRecord(attempt);
-      const { meta, audioRow } = await splitRecord(attempt);
+      const { meta, audioRow } = await splitRecord("attempt", attempt);
       await transact(db, [ATTEMPTS, AUDIO], "readwrite", async (tx) => {
         await Promise.all([request(tx.objectStore(ATTEMPTS).put(meta)), request(tx.objectStore(AUDIO).put(audioRow))]);
       });
     },
 
-    /** The attempt with its audio, or undefined if there is no such attempt. */
+    /** The attempt with its audio, or undefined if there is no such attempt. Lost audio sets `audioMissing`. */
     async getAttempt(id: string): Promise<AttemptRecord | undefined> {
       return transact(db, [ATTEMPTS, AUDIO], "readonly", async (tx) => {
         const meta = await request(tx.objectStore(ATTEMPTS).get(id) as IDBRequest<AttemptMeta | undefined>);
         if (meta === undefined) return undefined;
-        const row = await request(tx.objectStore(AUDIO).get(id) as IDBRequest<AudioRow | undefined>);
-        if (row === undefined) throw new Error(`Audio is missing for attempt ${id}`);
-        return { ...meta, audio: audioBlob(row) };
+        const key = audioKey("attempt", id);
+        const row = await request(tx.objectStore(AUDIO).get(key) as IDBRequest<AudioRow | undefined>);
+        return withAudio(meta, row);
       });
     },
 
     /** The recording of an attempt or reference, or undefined if there is none. */
-    async getAudio(id: string): Promise<Blob | undefined> {
+    async getAudio(kind: AudioKind, id: string): Promise<Blob | undefined> {
       const row = await transact(db, [AUDIO], "readonly", (tx) =>
-        request(tx.objectStore(AUDIO).get(id) as IDBRequest<AudioRow | undefined>),
+        request(tx.objectStore(AUDIO).get(audioKey(kind, id)) as IDBRequest<AudioRow | undefined>),
       );
-      return row === undefined ? undefined : audioBlob(row);
+      return row === undefined ? undefined : withAudio({ mimeType: row.mimeType }, row).audio;
     },
 
     /** Metadata only, newest first. */
     listAttempts,
 
     async deleteAttempt(id: string): Promise<void> {
-      await transact(db, [ATTEMPTS, AUDIO], "readwrite", (tx) => deleteWithAudio(tx, ATTEMPTS, [id]));
+      await transact(db, [ATTEMPTS, AUDIO], "readwrite", (tx) => deleteWithAudio(tx, ATTEMPTS, "attempt", [id]));
     },
 
     async deleteAttemptsFor(callType: CallType): Promise<void> {
       assertCallType(callType);
       await transact(db, [ATTEMPTS, AUDIO], "readwrite", async (tx) => {
         const ids = await request(tx.objectStore(ATTEMPTS).index(CALL_TYPE_INDEX).getAllKeys(callType));
-        await deleteWithAudio(tx, ATTEMPTS, ids);
+        await deleteWithAudio(tx, ATTEMPTS, "attempt", ids);
       });
     },
 
@@ -245,7 +270,7 @@ export function createStore(db: IDBDatabase) {
     /** Saving with `active: true` deactivates the other references of that call type. */
     async saveReference(reference: ReferenceRecord): Promise<void> {
       assertRecord(reference);
-      const { meta, audioRow } = await splitRecord(reference);
+      const { meta, audioRow } = await splitRecord("reference", reference);
       await transact(db, [REFERENCES, AUDIO], "readwrite", async (tx) => {
         const store = tx.objectStore(REFERENCES);
         const writes: Promise<unknown>[] = [request(store.put(meta)), request(tx.objectStore(AUDIO).put(audioRow))];
@@ -279,21 +304,21 @@ export function createStore(db: IDBDatabase) {
       });
     },
 
-    /** The active reference of that call type with its audio, or undefined if none is active. */
+    /** The active reference of that call type with its audio, or undefined if none is active. Lost audio sets `audioMissing`. */
     async getActiveReference(callType: CallType): Promise<ReferenceRecord | undefined> {
       assertCallType(callType);
       return transact(db, [REFERENCES, AUDIO], "readonly", async (tx) => {
         const references = await getAllMeta<ReferenceMeta>(tx, REFERENCES, callType);
         const active = references.filter((r) => r.active).sort(newestFirst)[0];
         if (active === undefined) return undefined;
-        const row = await request(tx.objectStore(AUDIO).get(active.id) as IDBRequest<AudioRow | undefined>);
-        if (row === undefined) throw new Error(`Audio is missing for reference ${active.id}`);
-        return { ...active, audio: audioBlob(row) };
+        const key = audioKey("reference", active.id);
+        const row = await request(tx.objectStore(AUDIO).get(key) as IDBRequest<AudioRow | undefined>);
+        return withAudio(active, row);
       });
     },
 
     async deleteReference(id: string): Promise<void> {
-      await transact(db, [REFERENCES, AUDIO], "readwrite", (tx) => deleteWithAudio(tx, REFERENCES, [id]));
+      await transact(db, [REFERENCES, AUDIO], "readwrite", (tx) => deleteWithAudio(tx, REFERENCES, "reference", [id]));
     },
 
     /** Flatness of the highest-scoring attempt (ties: newest) that has scores and measurements; null if none. */
