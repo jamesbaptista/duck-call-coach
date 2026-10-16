@@ -1,15 +1,15 @@
-import type { AnalysisResult, CallMeasurements, CallType } from "../../../analysis/types";
-import type { RecordingResult } from "../../../capture/recorder";
-import { ANALYZER_VERSION } from "../../../config/analysis";
-import { targetsFromReference, withFlatnessBaseline } from "../../../scoring/reference";
-import { loadTargets, scoreAttempt } from "../../../scoring/score";
-import { selectTips } from "../../../scoring/tips";
-import type { CallTargets } from "../../../scoring/types";
-import type { AttemptRecord } from "../../../storage/db";
+import type { AnalysisResult, CallMeasurements, CallType } from "../analysis/types";
+import type { RecordingResult } from "../capture/recorder";
+import { ANALYZER_VERSION } from "../config/analysis";
+import { targetsFromReference, withFlatnessBaseline } from "../scoring/reference";
+import { loadTargets, scoreAttempt } from "../scoring/score";
+import { selectTips } from "../scoring/tips";
+import type { CallTargets } from "../scoring/types";
+import type { AttemptRecord } from "../storage/db";
 
 /**
  * Turning a recording and its analysis into the attempt that gets saved. Pure: no storage and no browser APIs,
- * so the Practice screen gathers the inputs and these functions only assemble them.
+ * so the screens gather the inputs and these functions only assemble them. Shared by Practice, Results and History.
  */
 
 /** The parts of a recording an attempt keeps. A RecordingResult fits, and so does one rebuilt from a saved attempt. */

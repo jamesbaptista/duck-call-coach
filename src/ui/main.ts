@@ -4,6 +4,7 @@ import { parseRoute, type Route } from "./router";
 import { renderHome } from "./screens/home";
 import { renderPlaceholder } from "./screens/placeholder";
 import { renderPractice } from "./screens/practice";
+import { renderResults } from "./screens/results";
 import type { Cleanup } from "./screens/screen";
 
 function renderRoute(root: HTMLElement, route: Route): Cleanup {
@@ -12,6 +13,8 @@ function renderRoute(root: HTMLElement, route: Route): Cleanup {
       return renderHome(root, route);
     case "practice":
       return renderPractice(root, route);
+    case "results":
+      return renderResults(root, route);
     default:
       return renderPlaceholder(root, route);
   }

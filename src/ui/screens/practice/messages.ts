@@ -17,6 +17,11 @@ export interface StatusMessage {
 export const SAVE_FAILED_TEXT =
   "Couldn't save this attempt. Your phone may be out of space: back up and delete old attempts on the History screen.";
 
+export const ANALYZING_TEXT = "Analyzing…";
+
+export const ANALYSIS_FAILED_TEXT =
+  "The analysis didn't finish. Your recording is kept: tap Retry analysis to try again.";
+
 const NOT_SUPPORTED_TEXT = "This browser can't record audio here. Use Chrome on Android or Safari on iPhone.";
 
 const ALLOW_MIC_STEPS = [

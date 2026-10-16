@@ -1,5 +1,5 @@
 import type { CallType } from "../analysis/types";
-import type { Confidence } from "../scoring/types";
+import type { Confidence, SubScore } from "../scoring/types";
 
 /** What each call is called on screen. */
 export const CALL_NAMES: Record<CallType, string> = {
@@ -11,6 +11,14 @@ export const CALL_NAMES: Record<CallType, string> = {
 
 /** Home tile order. */
 export const HOME_CALL_ORDER: readonly CallType[] = ["quack", "hail", "chuckle", "comeback"];
+
+/** Sub-score names, in the order the Results screen lists them. */
+export const SUB_SCORE_NAMES: Record<SubScore, string> = {
+  rhythm: "Rhythm",
+  notes: "Notes",
+  pitch: "Pitch",
+  tone: "Tone",
+};
 
 const CONFIDENCE_NAMES: Record<Confidence, string> = { high: "High", medium: "Medium", low: "Low" };
 

@@ -11,7 +11,7 @@ const TITLES: Record<Route["name"], string> = {
   credits: "Credits",
 };
 
-/** Stands in for screens that later tasks build (Results, History, References, Credits). */
+/** Stands in for screens that later tasks build (History, References, Credits). */
 export const renderPlaceholder: RenderScreen = (root, route) => {
   root.append(
     el("a", { class: "back-link", href: routeHref({ name: "home" }), "aria-label": "Back to Home" }, "‹ Home"),

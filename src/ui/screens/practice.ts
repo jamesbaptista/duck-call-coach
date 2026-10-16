@@ -7,9 +7,11 @@ import type { AttemptRecord } from "../../storage/db";
 import { button, el } from "../dom";
 import { CALL_NAMES, confidenceText } from "../labels";
 import { navigate, routeHref } from "../router";
-import { chooseTargets } from "./practice/attempt";
+import { chooseTargets } from "../attempt";
 import { LiveView } from "./practice/live";
 import {
+  ANALYSIS_FAILED_TEXT,
+  ANALYZING_TEXT,
   captureErrorMessage,
   errorDetail,
   renderStatus,
@@ -18,22 +20,18 @@ import {
   type StatusMessage,
 } from "./practice/messages";
 import { analyzeToAttempt, retryAnalysis, saveOrRemember, type AnalyzedAttempt } from "./practice/pipeline";
-import { loadPracticeTarget, TargetPlayer } from "./practice/target";
+import { ClipPlayer, loadPracticeTarget } from "./practice/target";
 import type { Cleanup, RenderScreen } from "./screen";
-
-export { buildAttempt, buildFailedAttempt, isAnalysisFailed } from "./practice/attempt";
 
 type Phase = "idle" | "starting" | "recording" | "finishing" | "analyzing";
 
 const RECORD_LABEL = "Record";
 const STOP_LABEL = "Stop";
-const ANALYZING_TEXT = "Analyzing…";
 /**
  * The 15 s hard stop, enforced by a timer as well as by AutoStop: AutoStop is fed from animation frames, which
  * stop while the screen is off or the tab is hidden.
  */
 const HARD_STOP_MS = 15_000;
-const ANALYSIS_FAILED_TEXT = "The analysis didn't finish. Your recording is kept: tap Retry analysis to try again.";
 
 /** The Practice screen: hear the target, record a call, then analyse, score, save and go to the results. */
 class PracticeScreen {
@@ -56,7 +54,7 @@ class PracticeScreen {
   private readonly status = el("div", { class: "status", role: "status", "aria-live": "polite" });
   private readonly retryButton = button("Retry analysis", { class: "button secondary" });
   private readonly resultsLink = el("a", { class: "button secondary" }, "See results");
-  private readonly player = new TargetPlayer(this.playButton, (message) => this.show({ text: message, error: true }));
+  private readonly player = new ClipPlayer(this.playButton, (message) => this.show({ text: message, error: true }));
   private readonly onPageHide = (): void => this.abandonRecording();
 
   constructor(
@@ -88,6 +86,7 @@ class PracticeScreen {
   readonly cleanup: Cleanup = () => {
     this.disposed = true;
     clearTimeout(this.hardStopTimer);
+    // Discards a recording in progress; one already stopping is left to finish (cancel() ignores it) and is saved.
     this.session?.cancel();
     this.session = null;
     this.player.dispose();
@@ -209,9 +208,9 @@ class PracticeScreen {
       return;
     } finally {
       this.session = null;
-      this.live.hide();
+      if (!this.disposed) this.live.hide();
     }
-    if (this.disposed) return;
+    // A finished recording is analysed and saved even if the screen was left meanwhile (see analyze()).
     const identity = { id: crypto.randomUUID(), createdAt: this.createdAt };
     // The worker takes the samples; Retry analysis decodes the saved recording instead of keeping a copy.
     await this.analyze(() =>
@@ -219,9 +218,12 @@ class PracticeScreen {
     );
   }
 
+  /** Analyses and saves. After the screen is left it still saves, but no longer touches the detached DOM. */
   private async analyze(run: () => Promise<AnalyzedAttempt>): Promise<void> {
-    this.setPhase("analyzing");
-    this.show({ text: ANALYZING_TEXT });
+    if (!this.disposed) {
+      this.setPhase("analyzing");
+      this.show({ text: ANALYZING_TEXT });
+    }
     const { attempt, failure } = await run();
     const outcome = await saveOrRemember(attempt);
     if (this.disposed) return;

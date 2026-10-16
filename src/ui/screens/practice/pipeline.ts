@@ -1,11 +1,18 @@
 import { analyzeInWorker } from "../../../analysis/client";
-import type { CallType } from "../../../analysis/types";
+import type { AnalysisResult, CallType } from "../../../analysis/types";
 import { getDefaultStore, type AttemptRecord } from "../../../storage/db";
 import { forgetUnsavedAttempt, rememberUnsavedAttempt } from "../../session";
-import { buildAttempt, buildFailedAttempt, type AttemptRecording, type ScoringReference } from "./attempt";
+import { withTimeout } from "../../timeout";
+import { buildAttempt, buildFailedAttempt, type AttemptRecording, type ScoringReference } from "../../attempt";
 import { decodeToMono } from "./decode";
 
-/** From recorded samples to a saved attempt. Nothing here rejects: every failure comes back as a value. */
+/**
+ * From recorded samples to a saved attempt. A failed (or too slow) analysis and a failed save come back as
+ * values. Only a bug in building the attempt (scoring, tips) rejects, so it shows as an app error instead.
+ */
+
+/** An analysis still running after this long is treated as failed, so the user can retry instead of waiting. */
+export const ANALYSIS_TIMEOUT_MS = 30_000;
 
 export interface AttemptIdentity {
   id: string;
@@ -49,13 +56,14 @@ export async function analyzeToAttempt(
   identity: AttemptIdentity,
 ): Promise<AnalyzedAttempt> {
   const inputs = loadScoringInputs(callType);
+  let analysis: AnalysisResult;
   try {
-    const analysis = await analyzeInWorker(pcm, sampleRate, callType);
-    return { attempt: buildAttempt({ ...identity, recording, analysis, ...(await inputs) }), failure: null };
+    analysis = await withTimeout(analyzeInWorker(pcm, sampleRate, callType), ANALYSIS_TIMEOUT_MS);
   } catch (error) {
     const { reference } = await inputs;
     return { attempt: buildFailedAttempt({ ...identity, callType, recording, reference, error }), failure: { error } };
   }
+  return { attempt: buildAttempt({ ...identity, recording, analysis, ...(await inputs) }), failure: null };
 }
 
 /** Analyses a saved attempt's recording again: decodes it, mixes it to mono, and keeps its id and time. */

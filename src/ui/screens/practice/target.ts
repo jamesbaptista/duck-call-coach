@@ -50,33 +50,59 @@ function missingAudioClip(callType: CallType, reference: ReferenceRecord): Targe
   return { ...clip, label: `Target: your reference “${reference.name}”. Its recording is missing, so Play target plays a real hen.` };
 }
 
-/** The active reference (if any) and the clip Play target plays. Never rejects. */
-export async function loadPracticeTarget(callType: CallType): Promise<PracticeTarget> {
-  let reference: ReferenceRecord | undefined;
+/** The active reference for a call type, or undefined when there is none or storage can't be read. Never rejects. */
+export async function loadActiveReference(callType: CallType): Promise<ReferenceRecord | undefined> {
   try {
-    reference = await (await getDefaultStore()).getActiveReference(callType);
+    return await (await getDefaultStore()).getActiveReference(callType);
   } catch {
     // Storage is unavailable (for example, a private window); the bundled clip still works.
+    return undefined;
   }
-  if (!reference) return { clip: bundledClip(callType), reference };
-  return { clip: referenceClip(reference) ?? missingAudioClip(callType, reference), reference };
 }
 
-const PLAY_LABEL = "Play target";
-const STOP_LABEL = "Stop target";
+/** What Play target plays: the reference's recording when there is one and it has audio, else a bundled hen clip. */
+export function targetClip(callType: CallType, reference: ReferenceRecord | undefined): TargetClip {
+  if (!reference) return bundledClip(callType);
+  return referenceClip(reference) ?? missingAudioClip(callType, reference);
+}
 
-/** Drives the Play target button. Playback errors go to `onError` as a plain sentence. */
-export class TargetPlayer {
+/** The active reference (if any) and the clip Play target plays. Never rejects. */
+export async function loadPracticeTarget(callType: CallType): Promise<PracticeTarget> {
+  const reference = await loadActiveReference(callType);
+  return { clip: targetClip(callType, reference), reference };
+}
+
+export interface PlayerLabels {
+  play: string;
+  stop: string;
+  /** The sentence `onError` gets when playback fails, without the final full stop. */
+  failed: string;
+}
+
+export const TARGET_LABELS: PlayerLabels = {
+  play: "Play target",
+  stop: "Stop target",
+  failed: "The target recording couldn't be played",
+};
+
+/** play() rejects with AbortError when pause() or a new source interrupts it; that is not a playback failure. */
+function isAbortError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+}
+
+/** Drives a Play/Stop button for one clip. Playback errors go to `onError` as a plain sentence. */
+export class ClipPlayer {
   private readonly audio = new Audio();
   private clip: TargetClip | null = null;
 
   constructor(
     private readonly button: HTMLButtonElement,
     private readonly onError: (message: string) => void,
+    private readonly labels: PlayerLabels = TARGET_LABELS,
   ) {
     this.audio.preload = "none";
     this.audio.addEventListener("ended", () => this.showStopped());
-    button.textContent = PLAY_LABEL;
+    button.textContent = labels.play;
     button.disabled = true;
     button.addEventListener("click", () => this.toggle());
   }
@@ -112,15 +138,17 @@ export class TargetPlayer {
       this.stop();
       return;
     }
-    this.button.textContent = STOP_LABEL;
+    this.button.textContent = this.labels.stop;
     this.audio.play().catch((error: unknown) => {
+      // Record, Stop or another player paused it before it started: stop() already reset the button.
+      if (isAbortError(error)) return;
       this.showStopped();
       const detail = error instanceof Error ? ` (${error.name})` : "";
-      this.onError(`The target recording couldn't be played${detail}.`);
+      this.onError(`${this.labels.failed}${detail}.`);
     });
   }
 
   private showStopped(): void {
-    this.button.textContent = PLAY_LABEL;
+    this.button.textContent = this.labels.play;
   }
 }

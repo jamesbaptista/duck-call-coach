@@ -10,7 +10,7 @@ import { selectTips } from "../../src/scoring/tips";
 import { exportBackup, parseBackup } from "../../src/storage/backup";
 import { MAX_TIP_LENGTH } from "../../src/storage/backupSchema";
 import { createStore, openDb, type AttemptRecord } from "../../src/storage/db";
-import { buildAttempt, buildFailedAttempt, isAnalysisFailed } from "../../src/ui/screens/practice/attempt";
+import { buildAttempt, buildFailedAttempt, isAnalysisFailed } from "../../src/ui/attempt";
 import { readWav } from "../helpers/wav";
 
 const { samples, sampleRate } = readWav("tests/fixtures/hail_a.wav");
