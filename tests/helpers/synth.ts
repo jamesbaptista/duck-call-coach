@@ -42,7 +42,7 @@ export function harmonicNote({ f0, formantHz, seconds, sr, amp = 0.5 }: Harmonic
 }
 
 /** mulberry32: small, fast, seedable PRNG returning floats in [0, 1). */
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
