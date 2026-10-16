@@ -1,19 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vitest/config";
+import { CONTENT_SECURITY_POLICY } from "./src/build/csp.ts";
 import { buildServiceWorker, SERVICE_WORKER_FILE, type OutputFile } from "./src/build/serviceWorker.ts";
-
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self'",
-  "img-src 'self' data: blob:",
-  "media-src 'self' blob:",
-  "worker-src 'self' blob:",
-  "connect-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-].join("; ");
 
 // Build-only: Vite's dev server injects inline scripts that this policy would block.
 function contentSecurityPolicy(): Plugin {
