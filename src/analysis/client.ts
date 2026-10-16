@@ -36,12 +36,17 @@ export function createAnalysisClient(makeWorker: () => Worker): AnalyzeFn {
     pending.clear();
   }
 
-  function onReply(reply: AnalysisReply): void {
+  /** Settles the pending call a reply belongs to. A reply with no usable id is ignored; it never throws. */
+  function onReply(data: unknown): void {
+    if (typeof data !== "object" || data === null) return;
+    const reply = data as Partial<Record<"id" | "result" | "error", unknown>>;
+    if (typeof reply.id !== "number") return;
     const call = pending.get(reply.id);
     if (!call) return;
     pending.delete(reply.id);
-    if ("error" in reply) call.reject(new Error(reply.error));
-    else call.resolve(reply.result);
+    if (typeof reply.error === "string") call.reject(new Error(reply.error));
+    else if (reply.result !== undefined) call.resolve(reply.result as AnalysisResult);
+    else call.reject(new Error("The analysis worker sent a malformed reply"));
   }
 
   function startWorker(): AnalysisWorker {

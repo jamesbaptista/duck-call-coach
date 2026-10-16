@@ -103,6 +103,29 @@ describe("createAnalysisClient", () => {
     expect(await call).toEqual(resultFor("quack", -50));
   });
 
+  it.each([null, undefined, "text", 42, {}, { result: {} }, { id: "0", result: {} }])(
+    "ignores a reply with no usable id (%j) without throwing",
+    async (malformed) => {
+      const { workers, analyzeInWorker } = setup();
+      const call = analyzeInWorker(new Float32Array(10), SR, "quack");
+      expect(() => workers[0].emit("message", { data: malformed })).not.toThrow();
+      workers[0].reply({ id: workers[0].posted[0].message.id, result: resultFor("quack", -50) });
+      expect(await call).toEqual(resultFor("quack", -50));
+    },
+  );
+
+  it.each([{}, { result: undefined }, { error: 5 }])(
+    "rejects the matching call when a reply has neither an error string nor a result (%j)",
+    async (body) => {
+      const { workers, analyzeInWorker } = setup();
+      const call = analyzeInWorker(new Float32Array(10), SR, "quack");
+      const id = workers[0].posted[0].message.id;
+      expect(() => workers[0].emit("message", { data: { id, ...body } })).not.toThrow();
+      await expect(call).rejects.toThrow("malformed reply");
+      expect(workers[0].terminated).toBe(false);
+    },
+  );
+
   it("rejects every pending call when the worker errors, then discards that worker", async () => {
     const { workers, analyzeInWorker } = setup();
     const first = analyzeInWorker(new Float32Array(10), SR, "quack");
