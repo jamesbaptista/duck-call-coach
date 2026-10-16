@@ -9,6 +9,7 @@ import {
   chartTarget,
   QUALITY_MESSAGES,
   REFERENCE_INACTIVE_NOTE,
+  referenceLookup,
   resultsConfidence,
   subScoreText,
 } from "../../src/ui/screens/results/model";
@@ -116,5 +117,28 @@ describe("chartDescription", () => {
     expect(chartDescription({ attemptNotes: 4, targetNotes: 6, unmatched: 2, usesReference: true })).toContain(
       "2 notes have no partner.",
     );
+  });
+});
+
+describe("referenceLookup", () => {
+  const judged = { analysis: HAIL_A, scores: null };
+
+  it("looks up the reference the attempt was scored against by its id", () => {
+    expect(referenceLookup({ ...judged, targetSource: "reference", referenceId: "r1" })).toEqual({ kind: "id", id: "r1" });
+  });
+
+  it("falls back to the active reference for an older attempt saved without an id", () => {
+    expect(referenceLookup({ ...judged, targetSource: "reference" })).toEqual({ kind: "active" });
+  });
+
+  it("looks up nothing for an attempt scored against the built-in target", () => {
+    expect(referenceLookup({ ...judged, targetSource: "builtin" })).toEqual({ kind: "none" });
+  });
+
+  it("looks up nothing for an attempt whose analysis failed", () => {
+    const failed = { ...HAIL_A, notes: [], measurements: null, quality: null };
+    expect(referenceLookup({ analysis: failed, scores: null, targetSource: "reference", referenceId: "r1" })).toEqual({
+      kind: "none",
+    });
   });
 });

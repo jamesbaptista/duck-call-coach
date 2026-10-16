@@ -61,6 +61,19 @@ export async function loadActiveReference(callType: CallType): Promise<Reference
   }
 }
 
+/**
+ * Reference `id` of `callType`, active or not, or undefined when it is gone, belongs to another call or storage
+ * can't be read. Never rejects.
+ */
+export async function loadReference(id: string, callType: CallType): Promise<ReferenceRecord | undefined> {
+  try {
+    const reference = await (await getDefaultStore()).getReference(id);
+    return reference?.callType === callType ? reference : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** What Play target plays: the reference's recording when there is one and it has audio, else a bundled hen clip. */
 export function targetClip(callType: CallType, reference: ReferenceRecord | undefined): TargetClip {
   if (!reference) return bundledClip(callType);

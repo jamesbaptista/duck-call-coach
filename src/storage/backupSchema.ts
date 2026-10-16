@@ -316,6 +316,8 @@ function readAttempt(value: unknown, at: Where): AttemptRecord {
     durationMs: readNonNegative(raw.durationMs, field(at, "durationMs")),
     processingOff: readBoolean(raw.processingOff, field(at, "processingOff")),
     targetSource: readOneOf(raw.targetSource, ["builtin", "reference"], field(at, "targetSource")),
+    // Older backups have no referenceId; it is only kept when present, so the key never appears as undefined.
+    ...(raw.referenceId === undefined ? {} : { referenceId: readId(raw.referenceId, field(at, "referenceId")) }),
   };
 }
 

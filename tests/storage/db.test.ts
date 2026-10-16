@@ -305,6 +305,17 @@ describe("references", () => {
     expect((await store.getActiveReference("quack"))?.id).toBe("quackA");
   });
 
+  it("getReference returns one reference by id with its audio, active or not", async () => {
+    await store.saveReference(reference("r1", "hail", 1000, true));
+    await store.saveReference(reference("r2", "hail", 2000, false));
+    const inactive = await store.getReference("r2");
+    expect(inactive?.id).toBe("r2");
+    expect(inactive?.active).toBe(false);
+    expect(await bytesOf(inactive!.audio)).toEqual([9, 8, 7]);
+    expect(inactive?.audioMissing).toBeUndefined();
+    expect(await store.getReference("missing")).toBeUndefined();
+  });
+
   it("returns undefined when no reference is active", async () => {
     await store.saveReference(reference("r1", "hail", 1000));
     expect(await store.getActiveReference("hail")).toBeUndefined();

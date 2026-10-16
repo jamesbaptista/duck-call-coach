@@ -14,6 +14,11 @@ export interface AttemptRecord {
   durationMs: number;
   processingOff: boolean;
   targetSource: "builtin" | "reference";
+  /**
+   * The reference a judged attempt was scored against. Absent for the built-in target, for an attempt whose analysis
+   * failed, and for attempts saved before it was recorded.
+   */
+  referenceId?: string;
   /** Set on records read back when the stored recording is gone; `audio` is then an empty Blob. Never stored. */
   audioMissing?: true;
 }
@@ -319,6 +324,17 @@ export function createStore(db: IDBDatabase) {
         const key = audioKey("reference", active.id);
         const row = await request(tx.objectStore(AUDIO).get(key) as IDBRequest<AudioRow | undefined>);
         return withAudio(active, row);
+      });
+    },
+
+    /** One reference with its audio, active or not, or undefined if there is none. Lost audio sets `audioMissing`. */
+    async getReference(id: string): Promise<ReferenceRecord | undefined> {
+      return transact(db, [REFERENCES, AUDIO], "readonly", async (tx) => {
+        const meta = await request(tx.objectStore(REFERENCES).get(id) as IDBRequest<ReferenceMeta | undefined>);
+        if (meta === undefined) return undefined;
+        const key = audioKey("reference", id);
+        const row = await request(tx.objectStore(AUDIO).get(key) as IDBRequest<AudioRow | undefined>);
+        return withAudio(meta, row);
       });
     },
 

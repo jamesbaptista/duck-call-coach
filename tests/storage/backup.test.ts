@@ -285,6 +285,9 @@ const REJECTED_BACKUPS: [name: string, tamper: Tamper, message: RegExp][] = [
   ["an id with a space", (b) => (b.references[0].id = "my ref"), /Reference 1.*id/],
   ["an id with a dot-dot", (b) => (b.attempts[0].id = "../x"), /Attempt 1.*id/],
   ["an id with a non-ASCII letter", (b) => (b.attempts[0].id = "café"), /Attempt 1.*id/],
+  ["a referenceId with a slash", (b) => (b.attempts[0].referenceId = "r/1"), /Attempt 1.*referenceId/],
+  ["a referenceId that is not a string", (b) => (b.attempts[0].referenceId = 7), /Attempt 1.*referenceId/],
+  ["a referenceId that is null", (b) => (b.attempts[0].referenceId = null), /Attempt 1.*referenceId/],
 ];
 
 describe("a bad backup throws BackupError and importing it changes nothing", () => {
@@ -422,6 +425,16 @@ describe("parseBackup accepts", () => {
       ["analysis", "analyzerVersion", "audio", "callType", "createdAt", "durationMs", "id", "mimeType", "processingOff", "scores", "targetSource", "tips"],
     );
     expect(({} as Json).polluted).toBeUndefined();
+  });
+
+  it("an attempt's referenceId when it is there, and an older attempt without one", async () => {
+    const { store } = await newStore();
+    await store.saveAttempt(attempt("a1", "quack", 1, { targetSource: "reference", referenceId: "r1" }));
+    await store.saveAttempt(attempt("a2", "quack", 2, { targetSource: "reference" }));
+    const data = parseBackup(JSON.stringify(await backupJson(store)));
+    const byId = new Map(data.attempts.map((a) => [a.id, a]));
+    expect(byId.get("a1")?.referenceId).toBe("r1");
+    expect(byId.get("a2")).not.toHaveProperty("referenceId");
   });
 
   it("a file that starts with a byte order mark", async () => {

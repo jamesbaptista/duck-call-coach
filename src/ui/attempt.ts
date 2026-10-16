@@ -20,8 +20,9 @@ export interface AttemptRecording {
   processing: Pick<RecordingResult["processing"], "processingOff">;
 }
 
-/** Only the active reference's measurements matter for scoring; a full ReferenceRecord or ReferenceMeta fits. */
+/** The active reference: its measurements score the attempt and its id is saved with it. A ReferenceMeta fits. */
 export interface ScoringReference {
+  id: string;
   measurements: CallMeasurements;
 }
 
@@ -51,7 +52,7 @@ const MAX_ERROR_DETAIL_CHARS = 200;
 /** The targets an attempt is judged against: the active reference's, else the built-in ones, plus a rasp baseline. */
 export function chooseTargets(
   callType: CallType,
-  reference: ScoringReference | undefined,
+  reference: Pick<ScoringReference, "measurements"> | undefined,
   bestFlatness: number | null,
 ): CallTargets {
   const builtIn = loadTargets(callType);
@@ -90,6 +91,7 @@ export function buildAttempt(input: BuildAttemptInput): AttemptRecord {
     ...judge(analysis, targets),
     ...recordingFields(input.recording),
     targetSource: reference ? "reference" : "builtin",
+    ...(reference ? { referenceId: reference.id } : {}),
   };
 }
 

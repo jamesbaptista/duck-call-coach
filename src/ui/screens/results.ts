@@ -13,13 +13,14 @@ import {
   type StatusMessage,
 } from "../messages";
 import { retryAnalysis, saveOrRemember } from "../pipeline";
-import { ClipPlayer, loadActiveReference, targetClip, type PlayerLabels, type TargetClip } from "../target";
+import { ClipPlayer, loadActiveReference, loadReference, targetClip, type PlayerLabels, type TargetClip } from "../target";
 import {
   ANALYSIS_UNFINISHED_TEXT,
   chartTarget,
   NOT_FOUND_TEXT,
   PROCESSING_ON_NOTE,
   REFERENCE_INACTIVE_NOTE,
+  referenceLookup,
   resultsConfidence,
 } from "./results/model";
 import { chartView, notices, qualityView, scoresView, tipsView } from "./results/view";
@@ -57,6 +58,19 @@ function recordingClip(attempt: AttemptRecord): TargetClip | null {
   if (attempt.audioMissing || attempt.audio.size === 0) return null;
   const url = URL.createObjectURL(attempt.audio);
   return { url, label: "", release: () => URL.revokeObjectURL(url) };
+}
+
+/** The reference the attempt was scored against (see referenceLookup), or undefined. Never rejects. */
+function loadScoredReference(attempt: AttemptRecord): Promise<ReferenceRecord | undefined> {
+  const lookup = referenceLookup(attempt);
+  switch (lookup.kind) {
+    case "none":
+      return Promise.resolve(undefined);
+    case "active":
+      return loadActiveReference(attempt.callType);
+    case "id":
+      return loadReference(lookup.id, attempt.callType);
+  }
 }
 
 function recordedText(createdAt: number): string {
@@ -137,10 +151,7 @@ class ResultsScreen {
   }
 
   private async showAttempt(attempt: AttemptRecord, save: SaveState): Promise<void> {
-    const reference =
-      attempt.targetSource === "reference" && !isAnalysisFailed(attempt)
-        ? await loadActiveReference(attempt.callType)
-        : undefined;
+    const reference = await loadScoredReference(attempt);
     if (this.disposed) return;
     this.clearView();
     this.status.replaceChildren();

@@ -57,6 +57,7 @@ describe("buildAttempt", () => {
     const attempt = build();
     const expected = scoreAttempt(measured(HAIL_A), loadTargets("hail"));
     expect(attempt.targetSource).toBe("builtin");
+    expect("referenceId" in attempt).toBe(false);
     expect(attempt.scores).toEqual(expected);
     expect(attempt.tips.problems).toEqual(selectTips("hail", expected).problems);
     expect(attempt.scores?.measures.some((m) => m.key === "flatness")).toBe(false);
@@ -87,9 +88,10 @@ describe("buildAttempt", () => {
 
   it("scores against the active reference and its own flatness, ignoring the best flatness", () => {
     const refMeasurements: CallMeasurements = { ...measured(HAIL_A), spacingMs: 500, flatness: 0.4 };
-    const attempt = build({ reference: { measurements: refMeasurements }, bestFlatness: 0.05 });
+    const attempt = build({ reference: { id: "ref-1", measurements: refMeasurements }, bestFlatness: 0.05 });
     const targets = withFlatnessBaseline(targetsFromReference(loadTargets("hail"), refMeasurements), 0.4);
     expect(attempt.targetSource).toBe("reference");
+    expect(attempt.referenceId).toBe("ref-1");
     expect(attempt.scores).toEqual(scoreAttempt(measured(HAIL_A), targets));
     const spacing = attempt.scores?.measures.find((m) => m.key === "spacingMs");
     expect(spacing?.lo).toBeCloseTo(425);
@@ -98,7 +100,7 @@ describe("buildAttempt", () => {
 
   it("does not change the cached built-in targets", () => {
     const before = structuredClone(loadTargets("hail"));
-    build({ reference: { measurements: { ...measured(HAIL_A), flatness: 0.4 } }, bestFlatness: 0.2 });
+    build({ reference: { id: "ref-1", measurements: { ...measured(HAIL_A), flatness: 0.4 } }, bestFlatness: 0.2 });
     expect(loadTargets("hail")).toEqual(before);
   });
 
@@ -139,7 +141,7 @@ describe("buildFailedAttempt", () => {
       createdAt: 1,
       callType: "hail",
       recording: RECORDING,
-      reference: { measurements: measured(HAIL_A) },
+      reference: { id: "ref-1", measurements: measured(HAIL_A) },
       error: new Error("x".repeat(5000)),
     });
     expect(attempt.targetSource).toBe("reference");
@@ -151,6 +153,7 @@ describe("built attempts in a backup", () => {
   it("survive save, back up and restore validation unchanged", async () => {
     const store = createStore(await openDb("attempt-test-db"));
     const scored = build({ id: "scored", bestFlatness: 0.2 });
+    const onReference = build({ id: "on-reference", reference: { id: "ref-1", measurements: measured(HAIL_A) } });
     const failed = buildFailedAttempt({
       id: "failed",
       createdAt: 2,
@@ -160,6 +163,7 @@ describe("built attempts in a backup", () => {
       error: "worker gone",
     });
     await store.saveAttempt(scored);
+    await store.saveAttempt(onReference);
     await store.saveAttempt(failed);
     const restored = parseBackup(await (await exportBackup(store)).text());
     const byId = new Map(restored.attempts.map((a) => [a.id, a]));
@@ -167,6 +171,7 @@ describe("built attempts in a backup", () => {
     const { audio: _failedAudio, ...failedMeta } = failed;
     expect(byId.get("scored")).toMatchObject(scoredMeta);
     expect(byId.get("failed")).toMatchObject(failedMeta);
+    expect(byId.get("on-reference")?.referenceId).toBe("ref-1");
     store.close();
   });
 });

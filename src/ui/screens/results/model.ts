@@ -3,7 +3,7 @@ import { pairNotes } from "../../../scoring/reference";
 import { loadTargets } from "../../../scoring/score";
 import type { Confidence } from "../../../scoring/types";
 import type { AttemptRecord, ReferenceRecord } from "../../../storage/db";
-import { chooseTargets } from "../../attempt";
+import { chooseTargets, isAnalysisFailed } from "../../attempt";
 import type { ChartPair } from "../../charts/notesChart";
 import { builtInShape, referenceShape, type ShapeNote } from "../../charts/targetShape";
 
@@ -27,8 +27,22 @@ export function subScoreText(score: number | null): string {
   return score === null ? "–" : String(Math.round(score));
 }
 
-/** The reference the attempt was scored against, if it is still the active one. Notes draw it; measurements score it. */
+/** The reference the attempt was scored against, if it still exists. Notes draw it; measurements score it. */
 export type ResultsReference = Pick<ReferenceRecord, "notes" | "measurements">;
+
+/** Which reference the Results screen loads to draw and replay an attempt's target. */
+export type ReferenceLookup = { kind: "none" } | { kind: "id"; id: string } | { kind: "active" };
+
+/**
+ * The reference an attempt was scored against, found by the id saved with it, even if another one is active now.
+ * An attempt saved before ids were kept falls back to the active reference. Built-in and failed attempts need none.
+ */
+export function referenceLookup(
+  attempt: Pick<AttemptRecord, "targetSource" | "referenceId" | "analysis" | "scores">,
+): ReferenceLookup {
+  if (attempt.targetSource !== "reference" || isAnalysisFailed(attempt)) return { kind: "none" };
+  return attempt.referenceId === undefined ? { kind: "active" } : { kind: "id", id: attempt.referenceId };
+}
 
 export interface ChartTarget {
   shape: ShapeNote[];
@@ -36,8 +50,8 @@ export interface ChartTarget {
   /** True when the shape is the user's reference rather than the built-in hen target. */
   usesReference: boolean;
   /**
-   * The attempt was scored against a reference that is no longer active (deleted, or the user switched back to
-   * the built-in target), so the built-in shape stands in.
+   * The attempt was scored against a reference that can't be found any more (it was deleted, or for an attempt saved
+   * without its reference's id, none is active), so the built-in shape stands in.
    */
   referenceInactive: boolean;
 }
