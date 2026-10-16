@@ -150,6 +150,11 @@ function withAudio<M extends { mimeType: string }>(
   return { ...meta, audio: new Blob([row.audioBytes], { type: row.mimeType }) };
 }
 
+/** Stores an imported recording. Zero bytes means the recording was lost, so no row is written and the record reads as missing. */
+async function putAudio(audioStore: IDBObjectStore, row: AudioRow): Promise<void> {
+  if (row.audioBytes.byteLength > 0) await request(audioStore.put(row));
+}
+
 /** Newest first; ties broken by id descending so the order is deterministic. */
 function newestFirst(a: { createdAt: number; id: string }, b: { createdAt: number; id: string }): number {
   if (a.createdAt !== b.createdAt) return b.createdAt - a.createdAt;
@@ -394,7 +399,7 @@ export function createStore(db: IDBDatabase) {
             skipped++;
             continue;
           }
-          await Promise.all([request(attemptStore.put(meta)), request(audioStore.put(audioRow))]);
+          await Promise.all([request(attemptStore.put(meta)), putAudio(audioStore, audioRow)]);
           added++;
         }
         for (const { meta, audioRow } of references) {
@@ -404,7 +409,7 @@ export function createStore(db: IDBDatabase) {
           }
           const active = meta.active === true && !activeCallTypes.has(meta.callType);
           if (active) activeCallTypes.add(meta.callType);
-          await Promise.all([request(referenceStore.put({ ...meta, active })), request(audioStore.put(audioRow))]);
+          await Promise.all([request(referenceStore.put({ ...meta, active })), putAudio(audioStore, audioRow)]);
           added++;
         }
         return { added, skipped };

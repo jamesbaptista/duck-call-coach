@@ -12,7 +12,31 @@ export const BACKUP_FORMAT = "duck-call-coach-backup";
 export const BACKUP_VERSION = 1;
 export const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 export const MAX_BACKUP_CHARS = 500 * 1024 * 1024;
-const MAX_ID_LENGTH = 64;
+
+/** Most records one list may hold, and most entries in the lists inside a record. Checked before reading the entries. */
+export const MAX_RECORDS_PER_LIST = 10_000;
+export const MAX_NOTES = 1_000;
+export const MAX_SCORE_MEASURES = 64;
+export const MAX_TIPS = 50;
+
+/** Any measured value, score or time must stay within this, so later arithmetic on it cannot overflow to Infinity. */
+export const MAX_MAGNITUDE = 1e9;
+/** Score ranges (lo, hi) are built from a measured value times at most 1.2 plus a margin, so they get headroom. */
+const MAX_RANGE_MAGNITUDE = 1e10;
+/** The latest time a JavaScript Date can hold, in milliseconds. */
+const MAX_TIMESTAMP_MS = 8.64e15;
+const MAX_SCORE = 100;
+
+export const MAX_ID_LENGTH = 64;
+export const MAX_NAME_LENGTH = 60;
+export const MAX_TIP_LENGTH = 500;
+const MAX_ANALYZER_VERSION_LENGTH = 32;
+const MAX_MIME_TYPE_LENGTH = 100;
+const MAX_EXPORTED_AT_LENGTH = 40;
+
+/** Ids end up in URL routes, so they are limited to characters that need no escaping. */
+const VALID_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const VALID_AUDIO_MIME_TYPE = /^audio\/[a-z0-9.+-]+(;.*)?$/;
 
 /** Thrown for any problem with a backup file; the message is plain English and safe to show. */
 export class BackupError extends Error {
@@ -53,19 +77,54 @@ function readObject(value: unknown, at: Where): Raw {
   return value as Raw;
 }
 
-function readArray(value: unknown, at: Where): unknown[] {
+/** The length is checked here, before the caller looks at a single entry. */
+function readArray(value: unknown, at: Where, maxLength: number): unknown[] {
   if (!Array.isArray(value)) fail(at, "must be a list.");
+  if (value.length > maxLength) fail(at, `has too many entries (the limit is ${maxLength}).`);
   return value;
 }
 
-function readString(value: unknown, at: Where): string {
+function readString(value: unknown, at: Where, maxLength: number): string {
   if (typeof value !== "string") fail(at, "must be text.");
+  if (value.length > maxLength) fail(at, `is too long (the limit is ${maxLength} characters).`);
   return value;
 }
 
-function readNumber(value: unknown, at: Where): number {
+function readNumber(value: unknown, at: Where, limit: number = MAX_MAGNITUDE): number {
   if (typeof value !== "number" || !Number.isFinite(value)) fail(at, "must be a number.");
+  if (Math.abs(value) > limit) fail(at, `must be between -${limit} and ${limit}.`);
   return value;
+}
+
+function readRangeBound(value: unknown, at: Where): number {
+  return readNumber(value, at, MAX_RANGE_MAGNITUDE);
+}
+
+/** A whole number of 0 or more, such as a count or an index. */
+function readCount(value: unknown, at: Where): number {
+  const count = readNumber(value, at);
+  if (!Number.isInteger(count) || count < 0) fail(at, "must be a whole number, 0 or more.");
+  return count;
+}
+
+/** A length of time: not negative, fractions allowed (a recording's length is not a whole number of ms). */
+function readNonNegative(value: unknown, at: Where): number {
+  const number = readNumber(value, at);
+  if (number < 0) fail(at, "must not be negative.");
+  return number;
+}
+
+function readScore(value: unknown, at: Where): number {
+  const score = readNumber(value, at);
+  if (score < 0 || score > MAX_SCORE) fail(at, `must be between 0 and ${MAX_SCORE}.`);
+  return score;
+}
+
+/** Milliseconds since 1970, as Date.now() gives them: a whole number that a Date can represent. */
+function readTimestamp(value: unknown, at: Where): number {
+  const time = readNumber(value, at, MAX_TIMESTAMP_MS);
+  if (!Number.isInteger(time) || time < 0) fail(at, "must be a whole number of milliseconds, 0 or more.");
+  return time;
 }
 
 function readBoolean(value: unknown, at: Where): boolean {
@@ -92,32 +151,37 @@ const QUALITY_ISSUE_FLAGS: Record<QualityIssue, true> = {
 };
 const QUALITY_ISSUES = Object.keys(QUALITY_ISSUE_FLAGS) as QualityIssue[];
 
-/** Every call measurement, and whether it can be null; the Record type makes the compiler flag a missing one. */
-const MEASUREMENT_NULLABLE: Record<keyof CallMeasurements, boolean> = {
-  noteCount: false,
-  spacingMs: true,
-  spacingCv: true,
-  burstSpacingMs: true,
-  firstNoteMs: false,
-  lastNoteMs: false,
-  medianNoteMs: false,
-  lastFirstRatio: true,
-  loudestIndex: false,
-  fadeDb: false,
-  resonanceHz: false,
-  resonanceSlopeHzPerNote: true,
-  flatness: false,
-  maxSqueakShare: false,
-  longNoteCount: false,
-  snrDb: false,
+/**
+ * Every call measurement and what it holds: a whole-number "count", any "number", or an "optional" number that can
+ * be null. The Record type makes the compiler flag a missing one.
+ */
+const MEASUREMENT_KIND: Record<keyof CallMeasurements, "count" | "number" | "optional"> = {
+  noteCount: "count",
+  spacingMs: "optional",
+  spacingCv: "optional",
+  burstSpacingMs: "optional",
+  firstNoteMs: "number",
+  lastNoteMs: "number",
+  medianNoteMs: "number",
+  lastFirstRatio: "optional",
+  loudestIndex: "count",
+  fadeDb: "number",
+  resonanceHz: "number",
+  resonanceSlopeHzPerNote: "optional",
+  flatness: "number",
+  maxSqueakShare: "number",
+  longNoteCount: "count",
+  snrDb: "number",
 };
 
 function readMeasurements(value: unknown, at: Where): CallMeasurements {
   const raw = readObject(value, at);
   const result: Record<string, number | null> = {};
-  for (const [key, nullable] of Object.entries(MEASUREMENT_NULLABLE)) {
+  for (const [key, kind] of Object.entries(MEASUREMENT_KIND)) {
     const where = field(at, key);
-    result[key] = nullable ? readNullable(raw[key], where, readNumber) : readNumber(raw[key], where);
+    if (kind === "count") result[key] = readCount(raw[key], where);
+    else if (kind === "optional") result[key] = readNullable(raw[key], where, readNumber);
+    else result[key] = readNumber(raw[key], where);
   }
   return result as unknown as CallMeasurements;
 }
@@ -137,19 +201,22 @@ function readNote(value: unknown, at: Where): Note {
 }
 
 function readNotes(value: unknown, at: Where): Note[] {
-  return readArray(value, at).map((note, i) => readNote(note, item(at, i)));
+  return readArray(value, at, MAX_NOTES).map((note, i) => readNote(note, item(at, i)));
+}
+
+function readVersion(value: unknown, at: Where): string {
+  return readString(value, at, MAX_ANALYZER_VERSION_LENGTH);
 }
 
 function readAnalysis(value: unknown, at: Where): AnalysisResult {
   const raw = readObject(value, at);
   return {
     callType: readOneOf(raw.callType, CALL_TYPES, field(at, "callType")),
-    analyzerVersion: readString(raw.analyzerVersion, field(at, "analyzerVersion")),
+    analyzerVersion: readVersion(raw.analyzerVersion, field(at, "analyzerVersion")),
     noiseFloorDb: readNumber(raw.noiseFloorDb, field(at, "noiseFloorDb")),
     notes: readNotes(raw.notes, field(at, "notes")),
     measurements: readNullable(raw.measurements, field(at, "measurements"), readMeasurements),
-    quality:
-      raw.quality === null ? null : readOneOf(raw.quality, QUALITY_ISSUES, field(at, "quality")),
+    quality: raw.quality === null ? null : readOneOf(raw.quality, QUALITY_ISSUES, field(at, "quality")),
   };
 }
 
@@ -159,9 +226,9 @@ function readMeasureScore(value: unknown, at: Where): MeasureScore {
     key: readOneOf(raw.key, MEASURE_KEYS, field(at, "key")),
     sub: readOneOf(raw.sub, SUB_SCORES, field(at, "sub")),
     value: readNullable(raw.value, field(at, "value"), readNumber),
-    lo: readNumber(raw.lo, field(at, "lo")),
-    hi: readNumber(raw.hi, field(at, "hi")),
-    score: readNullable(raw.score, field(at, "score"), readNumber),
+    lo: readRangeBound(raw.lo, field(at, "lo")),
+    hi: readRangeBound(raw.hi, field(at, "hi")),
+    score: readNullable(raw.score, field(at, "score"), readScore),
     weightedLoss: readNumber(raw.weightedLoss, field(at, "weightedLoss")),
   };
 }
@@ -171,42 +238,55 @@ function readScores(value: unknown, at: Where): Scores {
   const subsAt = field(at, "subs");
   const rawSubs = readObject(raw.subs, subsAt);
   const subs = {} as Record<SubScore, number | null>;
-  for (const sub of SUB_SCORES) subs[sub] = readNullable(rawSubs[sub], field(subsAt, sub), readNumber);
+  for (const sub of SUB_SCORES) subs[sub] = readNullable(rawSubs[sub], field(subsAt, sub), readScore);
   const measuresAt = field(at, "measures");
   return {
-    overall: readNumber(raw.overall, field(at, "overall")),
+    overall: readScore(raw.overall, field(at, "overall")),
     subs,
-    measures: readArray(raw.measures, measuresAt).map((m, i) => readMeasureScore(m, item(measuresAt, i))),
+    measures: readArray(raw.measures, measuresAt, MAX_SCORE_MEASURES).map((m, i) =>
+      readMeasureScore(m, item(measuresAt, i)),
+    ),
   };
 }
 
-function readStringList(value: unknown, at: Where): string[] {
-  return readArray(value, at).map((text, i) => readString(text, item(at, i)));
+function readTip(value: unknown, at: Where): string {
+  return readString(value, at, MAX_TIP_LENGTH);
+}
+
+function readTipList(value: unknown, at: Where): string[] {
+  return readArray(value, at, MAX_TIPS).map((tip, i) => readTip(tip, item(at, i)));
 }
 
 function readTips(value: unknown, at: Where): AttemptRecord["tips"] {
   const raw = readObject(value, at);
   return {
-    problems: readStringList(raw.problems, field(at, "problems")),
-    positive: readNullable(raw.positive, field(at, "positive"), readString),
+    problems: readTipList(raw.problems, field(at, "problems")),
+    positive: readNullable(raw.positive, field(at, "positive"), readTip),
   };
 }
 
 function readId(value: unknown, at: Where): string {
-  const id = readString(value, at);
-  if (id.length < 1 || id.length > MAX_ID_LENGTH) fail(at, `must be 1 to ${MAX_ID_LENGTH} characters long.`);
+  const id = readString(value, at, MAX_ID_LENGTH);
+  if (!VALID_ID.test(id)) fail(at, `must be 1 to ${MAX_ID_LENGTH} letters, digits, dashes or underscores.`);
   return id;
 }
 
 function readMimeType(value: unknown, at: Where): string {
-  const mimeType = readString(value, at);
-  if (!mimeType.startsWith("audio/")) fail(at, 'must be an audio type, starting with "audio/".');
+  const mimeType = readString(value, at, MAX_MIME_TYPE_LENGTH);
+  if (!VALID_AUDIO_MIME_TYPE.test(mimeType)) fail(at, 'must be an audio type such as "audio/webm".');
   return mimeType;
+}
+
+function readDateText(value: unknown, at: Where): string {
+  const text = readString(value, at, MAX_EXPORTED_AT_LENGTH);
+  if (Number.isNaN(Date.parse(text))) fail(at, "must be a date.");
+  return text;
 }
 
 /** Decodes base64 audio into a Blob. Empty text is allowed: it is how a record whose recording was lost is exported. */
 function readAudio(value: unknown, mimeType: string, at: Where): Blob {
-  const text = readString(value, at);
+  // The whole file is already capped, so the text is not capped again here; the decoded size is checked below.
+  const text = readString(value, at, MAX_BACKUP_CHARS);
   const size = decodedByteLength(text);
   if (size === null) fail(at, "is not valid base64.");
   if (size > MAX_AUDIO_BYTES) fail(at, `is larger than ${MAX_AUDIO_BYTES / (1024 * 1024)} MB.`);
@@ -221,14 +301,14 @@ function readAttempt(value: unknown, at: Where): AttemptRecord {
   return {
     id: readId(raw.id, field(at, "id")),
     callType: readOneOf<CallType>(raw.callType, CALL_TYPES, field(at, "callType")),
-    createdAt: readNumber(raw.createdAt, field(at, "createdAt")),
-    analyzerVersion: readString(raw.analyzerVersion, field(at, "analyzerVersion")),
+    createdAt: readTimestamp(raw.createdAt, field(at, "createdAt")),
+    analyzerVersion: readVersion(raw.analyzerVersion, field(at, "analyzerVersion")),
     analysis: readAnalysis(raw.analysis, field(at, "analysis")),
     scores: readNullable(raw.scores, field(at, "scores"), readScores),
     tips: readTips(raw.tips, field(at, "tips")),
     audio: readAudio(raw.audio, mimeType, field(at, "audio")),
     mimeType,
-    durationMs: readNumber(raw.durationMs, field(at, "durationMs")),
+    durationMs: readNonNegative(raw.durationMs, field(at, "durationMs")),
     processingOff: readBoolean(raw.processingOff, field(at, "processingOff")),
     targetSource: readOneOf(raw.targetSource, ["builtin", "reference"], field(at, "targetSource")),
   };
@@ -240,8 +320,8 @@ function readReference(value: unknown, at: Where): ReferenceRecord {
   return {
     id: readId(raw.id, field(at, "id")),
     callType: readOneOf<CallType>(raw.callType, CALL_TYPES, field(at, "callType")),
-    name: readString(raw.name, field(at, "name")),
-    createdAt: readNumber(raw.createdAt, field(at, "createdAt")),
+    name: readString(raw.name, field(at, "name"), MAX_NAME_LENGTH),
+    createdAt: readTimestamp(raw.createdAt, field(at, "createdAt")),
     audio: readAudio(raw.audio, mimeType, field(at, "audio")),
     mimeType,
     measurements: readMeasurements(raw.measurements, field(at, "measurements")),
@@ -257,7 +337,7 @@ function readRecords<T extends { id: string }>(
   noun: string,
   read: (value: unknown, at: Where) => T,
 ): T[] {
-  const list = readArray(value, { label: "The backup", path: listName });
+  const list = readArray(value, { label: "The backup", path: listName }, MAX_RECORDS_PER_LIST);
   const firstIndexOfId = new Map<string, number>();
   return list.map((raw, i) => {
     const at: Where = { label: `${noun} ${i + 1}`, path: "" };
@@ -280,7 +360,7 @@ export function readBackup(raw: unknown): BackupData {
     throw new BackupError(`This backup was made by a different version of the app. Only version ${BACKUP_VERSION} can be restored.`);
   }
   return {
-    exportedAt: readString(file.exportedAt, field(top, "exportedAt")),
+    exportedAt: readDateText(file.exportedAt, field(top, "exportedAt")),
     attempts: readRecords(file.attempts, "attempts", "Attempt", readAttempt),
     references: readRecords(file.references, "references", "Reference", readReference),
   };

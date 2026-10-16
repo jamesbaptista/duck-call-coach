@@ -190,13 +190,15 @@ describe("export then import", () => {
     expect((await target.listReferences("quack")).filter((r) => r.active)).toHaveLength(1);
   });
 
-  it("restores a record whose audio was lost, with an empty recording", async () => {
+  it("restores a record whose audio was lost, still reading as lost", async () => {
     const { db, store: source } = await newStore();
     await source.saveAttempt(richAttempt("a1", "quack", 1000));
     await clearAudio(db);
     const { store: target } = await newStore();
     expect(await restore(target, await (await exportBackup(source)).text())).toEqual({ added: 1, skipped: 0 });
-    expect((await target.getAudio("attempt", "a1"))!.size).toBe(0);
+    // No audio row is written for zero bytes, so it reads back as a lost recording again.
+    expect(await target.getAudio("attempt", "a1")).toBeUndefined();
+    expect((await target.getAttempt("a1"))!.audioMissing).toBe(true);
   });
 });
 
@@ -246,6 +248,43 @@ const REJECTED_BACKUPS: [name: string, tamper: Tamper, message: RegExp][] = [
   ["a reference note with a missing field", (b) => delete b.references[0].notes[0].flatness, /Reference 1.*notes\[0\]\.flatness/],
   ["a duplicate attempt id", (b) => b.attempts.push({ ...b.attempts[0] }), /Attempt 3.*same id/],
   ["a duplicate reference id", (b) => (b.references[1].id = b.references[0].id), /Reference 2.*same id/],
+  // Magnitudes and ranges
+  ["a measurement of 1e308", (b) => (b.references[0].measurements.spacingMs = 1e308), /Reference 1.*measurements\.spacingMs/],
+  ["a note value beyond 1e9", (b) => (b.attempts[0].analysis.notes[0].peakDb = 1e10), /Attempt 1.*notes\[0\]\.peakDb/],
+  ["a score range bound beyond 1e10", (b) => (b.attempts[0].scores.measures[0].hi = 1e11), /Attempt 1.*measures\[0\]\.hi/],
+  ["an overall score above 100", (b) => (b.attempts[0].scores.overall = 101), /Attempt 1.*scores\.overall/],
+  ["an overall score below 0", (b) => (b.attempts[0].scores.overall = -1), /Attempt 1.*scores\.overall/],
+  ["a sub-score above 100", (b) => (b.attempts[0].scores.subs.rhythm = 101), /Attempt 1.*scores\.subs\.rhythm/],
+  ["a measure score above 100", (b) => (b.attempts[0].scores.measures[0].score = 120), /Attempt 1.*measures\[0\]\.score/],
+  ["a createdAt past the Date range", (b) => (b.attempts[0].createdAt = 8.64e15 + 1), /Attempt 1.*createdAt/],
+  ["a negative createdAt", (b) => (b.references[0].createdAt = -1), /Reference 1.*createdAt/],
+  ["a createdAt with a fraction", (b) => (b.attempts[0].createdAt = 1000.5), /Attempt 1.*createdAt/],
+  ["a noteCount with a fraction", (b) => (b.attempts[0].analysis.measurements.noteCount = 2.5), /Attempt 1.*measurements\.noteCount/],
+  ["a negative longNoteCount", (b) => (b.references[0].measurements.longNoteCount = -1), /Reference 1.*measurements\.longNoteCount/],
+  ["a negative loudestIndex", (b) => (b.attempts[0].analysis.measurements.loudestIndex = -1), /Attempt 1.*measurements\.loudestIndex/],
+  ["a negative durationMs", (b) => (b.attempts[0].durationMs = -5), /Attempt 1.*durationMs/],
+  // Counts
+  ["too many attempts", (b) => (b.attempts = new Array(10_001).fill(0)), /attempts.*too many/],
+  ["too many references", (b) => (b.references = new Array(10_001).fill(0)), /references.*too many/],
+  ["too many analysis notes", (b) => (b.attempts[0].analysis.notes = new Array(1_001).fill(0)), /Attempt 1.*analysis\.notes.*too many/],
+  ["too many reference notes", (b) => (b.references[0].notes = new Array(1_001).fill(0)), /Reference 1.*notes.*too many/],
+  ["too many score measures", (b) => (b.attempts[0].scores.measures = new Array(65).fill(0)), /Attempt 1.*scores\.measures.*too many/],
+  ["too many tips", (b) => (b.attempts[0].tips.problems = new Array(51).fill("x")), /Attempt 1.*tips\.problems.*too many/],
+  // Text
+  ["a reference name of 61 characters", (b) => (b.references[0].name = "n".repeat(61)), /Reference 1.*name.*too long/],
+  ["a tip of 501 characters", (b) => (b.attempts[0].tips.problems = ["t".repeat(501)]), /Attempt 1.*tips\.problems\[0\].*too long/],
+  ["a positive tip of 501 characters", (b) => (b.attempts[0].tips.positive = "t".repeat(501)), /Attempt 1.*tips\.positive.*too long/],
+  ["an analyzerVersion of 33 characters", (b) => (b.attempts[0].analyzerVersion = "v".repeat(33)), /Attempt 1.*analyzerVersion.*too long/],
+  ["an analysis analyzerVersion of 33 characters", (b) => (b.attempts[0].analysis.analyzerVersion = "v".repeat(33)), /Attempt 1.*analysis\.analyzerVersion/],
+  ["a bare audio/ mimeType", (b) => (b.attempts[0].mimeType = "audio/"), /Attempt 1.*mimeType/],
+  ["an uppercase mimeType", (b) => (b.attempts[0].mimeType = "AUDIO/WEBM"), /Attempt 1.*mimeType/],
+  ["a mimeType of 101 characters", (b) => (b.attempts[0].mimeType = "audio/" + "a".repeat(95)), /Attempt 1.*mimeType.*too long/],
+  ["an exportedAt of 41 characters", (b) => (b.exportedAt = "2026-10-16T00:00:00.000Z" + " ".repeat(17)), /exportedAt.*too long/],
+  ["an exportedAt that is not a date", (b) => (b.exportedAt = "last tuesday"), /exportedAt.*date/],
+  ["an id with a slash", (b) => (b.attempts[0].id = "a/b"), /Attempt 1.*id/],
+  ["an id with a space", (b) => (b.references[0].id = "my ref"), /Reference 1.*id/],
+  ["an id with a dot-dot", (b) => (b.attempts[0].id = "../x"), /Attempt 1.*id/],
+  ["an id with a non-ASCII letter", (b) => (b.attempts[0].id = "café"), /Attempt 1.*id/],
 ];
 
 describe("a bad backup throws BackupError and importing it changes nothing", () => {
@@ -334,6 +373,34 @@ describe("size limits", () => {
     const huge = { length: MAX_BACKUP_CHARS + 1 } as unknown as string;
     expect(() => parseBackup(huge)).toThrow(BackupError);
     expect(() => parseBackup(huge)).toThrow(/500 MB/);
+  });
+});
+
+describe("a real backup still round-trips at the edges of the rules", () => {
+  it("keeps UUID ids, a codecs mimeType, a fractional duration, a 60-character name and extreme-but-allowed numbers", async () => {
+    const { store: source } = await newStore();
+    const uuid = "3f2b8c1e-5d4a-4b7e-9a10-0c6d2e8f7a15";
+    const mimeType = "audio/webm;codecs=opus";
+    await source.saveAttempt(
+      richAttempt(uuid, "quack", 8.64e15, {
+        mimeType,
+        audio: new Blob([new Uint8Array([5, 6, 7])], { type: mimeType }),
+        durationMs: 2345.678901,
+        analysis: { ...analysisOf("quack", 0.3), analyzerVersion: "v".repeat(32) },
+        tips: { problems: ["t".repeat(500)], positive: "p".repeat(500) },
+      }),
+    );
+    await source.saveReference({
+      ...reference("name_with-dashes_9", "hail", 0, true),
+      name: "n".repeat(60),
+      measurements: { ...MEASUREMENTS, snrDb: -1e9, resonanceHz: 1e9 },
+    });
+    const { store: target } = await newStore();
+
+    expect(await restore(target, await (await exportBackup(source)).text())).toEqual({ added: 2, skipped: 0 });
+    expect(await target.listAttempts()).toEqual(await source.listAttempts());
+    expect(await target.listReferences("hail")).toEqual(await source.listReferences("hail"));
+    expect(await bytesOf((await target.getAudio("attempt", uuid))!)).toEqual([5, 6, 7]);
   });
 });
 

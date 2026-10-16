@@ -537,15 +537,17 @@ describe("importRecords", () => {
     expect(active).toHaveLength(1);
   });
 
-  it("stores empty audio as an empty audio row", async () => {
+  it("writes no audio row for zero-byte audio, so the record reads back with audioMissing", async () => {
     await store.importRecords({
       attempts: [attempt("a1", "quack", 1000, { audio: new Blob([], { type: "audio/webm" }) })],
-      references: [],
+      references: [{ ...reference("r1", "quack", 2000), audio: new Blob([], { type: "audio/mp4" }) }],
     });
-    const audio = await store.getAudio("attempt", "a1");
-    expect(audio).toBeDefined();
-    expect(audio!.size).toBe(0);
-    expect(await countRows("audio")).toBe(1);
+    expect(await countRows("audio")).toBe(0);
+    expect(await store.getAudio("attempt", "a1")).toBeUndefined();
+    const loaded = await store.getAttempt("a1");
+    expect(loaded!.audioMissing).toBe(true);
+    expect(loaded!.audio.size).toBe(0);
+    expect((await store.getAllRecords()).references[0].audioMissing).toBe(true);
   });
 
   it("rolls everything back when a write fails part-way through", async () => {
