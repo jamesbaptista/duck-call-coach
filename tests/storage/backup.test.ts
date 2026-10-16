@@ -128,6 +128,19 @@ describe("exportBackup", () => {
   });
 });
 
+describe("exportBackup refuses a backup that would not restore", () => {
+  it("rejects with the reason when a stored measurement is NaN", async () => {
+    const { store } = await newStore();
+    await store.saveAttempt(richAttempt("good", "quack", 1000));
+    const bad = richAttempt("bad", "quack", 2000);
+    bad.analysis.measurements = { ...MEASUREMENTS, flatness: NaN };
+    await store.saveAttempt(bad);
+
+    await expect(exportBackup(store)).rejects.toBeInstanceOf(BackupError);
+    await expect(exportBackup(store)).rejects.toThrow(/^This backup would not restore: Attempt 1: .*measurements\.flatness/);
+  });
+});
+
 describe("export then import", () => {
   it("restores identical records into an empty database, with byte-equal audio", async () => {
     const { store: source } = await newStore();

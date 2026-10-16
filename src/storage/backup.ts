@@ -15,21 +15,31 @@ async function toFileRecord<T extends { audio: Blob; audioMissing?: true }>(
   return { ...rest, audio: encodeBase64(new Uint8Array(await audio.arrayBuffer())) };
 }
 
-/** Everything the app stores, as one JSON file the user can keep. Audio is base64 text. */
+/** Everything the app stores, as one JSON file the user can keep. Audio is base64 text. Throws BackupError if the file would not restore. */
 export async function exportBackup(store: Store): Promise<Blob> {
   const { attempts, references } = await store.getAllRecords();
   const exportedAt = new Date().toISOString();
   const fileAttempts = await Promise.all(attempts.map(toFileRecord));
   const fileReferences = await Promise.all(references.map(toFileRecord));
-  // Written as pieces so the whole file is never one giant string.
-  const parts = [
+  const text = [
     `{"format":${JSON.stringify(BACKUP_FORMAT)},"version":${BACKUP_VERSION},"exportedAt":${JSON.stringify(exportedAt)},"attempts":[`,
     fileAttempts.map((record) => JSON.stringify(record)).join(","),
     '],"references":[',
     fileReferences.map((record) => JSON.stringify(record)).join(","),
     "]}",
-  ];
-  return new Blob(parts, { type: "application/json" });
+  ].join("");
+  assertRestorable(text);
+  return new Blob([text], { type: "application/json" });
+}
+
+/** Fails now, while the user can still react, rather than handing out a file that restore would refuse. */
+function assertRestorable(text: string): void {
+  try {
+    parseBackup(text);
+  } catch (error) {
+    if (error instanceof BackupError) throw new BackupError(`This backup would not restore: ${error.message}`);
+    throw error;
+  }
 }
 
 /**
