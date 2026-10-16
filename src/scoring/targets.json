@@ -1,0 +1,53 @@
+{
+  "quack": {
+    "confidence": "high",
+    "description": "One clean quack, about a quarter second long.",
+    "measures": [
+      { "key": "firstNoteMs", "lo": 180, "hi": 375, "tolerance": 150, "weight": 2, "sub": "notes" },
+      { "key": "resonanceHz", "lo": 1800, "hi": 2100, "tolerance": 500, "weight": 2, "sub": "pitch" },
+      { "key": "maxSqueakShare", "lo": 0, "hi": 0.8, "tolerance": 0.2, "weight": 1, "sub": "tone" }
+    ],
+    "subWeights": { "rhythm": 0, "notes": 1, "pitch": 2, "tone": 2 }
+  },
+  "hail": {
+    "confidence": "high",
+    "description": "5-6 notes, each a little shorter and softer, at a steady pace.",
+    "measures": [
+      { "key": "noteCount", "lo": 4, "hi": 10, "tolerance": 4, "weight": 2, "sub": "notes" },
+      { "key": "spacingMs", "lo": 230, "hi": 370, "tolerance": 120, "weight": 2, "sub": "rhythm" },
+      { "key": "spacingCv", "lo": 0, "hi": 0.15, "tolerance": 0.25, "weight": 1, "sub": "rhythm" },
+      { "key": "lastFirstRatio", "lo": 0.3, "hi": 0.7, "tolerance": 0.3, "weight": 1, "sub": "notes" },
+      { "key": "loudestIndex", "lo": 0, "hi": 3, "tolerance": 3, "weight": 1, "sub": "notes" },
+      { "key": "fadeDb", "lo": 4, "hi": 999, "tolerance": 4, "weight": 1, "sub": "notes" },
+      { "key": "resonanceHz", "lo": 1500, "hi": 2400, "tolerance": 500, "weight": 2, "sub": "pitch" },
+      { "key": "resonanceSlopeHzPerNote", "lo": -60, "hi": 10, "tolerance": 60, "weight": 1, "sub": "pitch" },
+      { "key": "maxSqueakShare", "lo": 0, "hi": 0.8, "tolerance": 0.2, "weight": 1, "sub": "tone" }
+    ],
+    "subWeights": { "rhythm": 2, "notes": 3, "pitch": 1, "tone": 1 }
+  },
+  "comeback": {
+    "confidence": "low",
+    "description": "Like the hail but faster and more urgent: a strong first note, then 5-10 quick notes that fade.",
+    "measures": [
+      { "key": "noteCount", "lo": 5, "hi": 10, "tolerance": 4, "weight": 2, "sub": "notes" },
+      { "key": "spacingMs", "lo": 150, "hi": 250, "tolerance": 100, "weight": 2, "sub": "rhythm" },
+      { "key": "spacingCv", "lo": 0, "hi": 0.2, "tolerance": 0.25, "weight": 1, "sub": "rhythm" },
+      { "key": "loudestIndex", "lo": 0, "hi": 1, "tolerance": 3, "weight": 1, "sub": "notes" },
+      { "key": "fadeDb", "lo": 4, "hi": 999, "tolerance": 4, "weight": 1, "sub": "notes" },
+      { "key": "resonanceHz", "lo": 1500, "hi": 2400, "tolerance": 500, "weight": 1, "sub": "pitch" },
+      { "key": "maxSqueakShare", "lo": 0, "hi": 0.8, "tolerance": 0.2, "weight": 1, "sub": "tone" }
+    ],
+    "subWeights": { "rhythm": 2, "notes": 2, "pitch": 1, "tone": 1 }
+  },
+  "chuckle": {
+    "confidence": "low",
+    "description": "Quick, short clicks in rolling bursts, with no long quacks mixed in.",
+    "measures": [
+      { "key": "medianNoteMs", "lo": 30, "hi": 100, "tolerance": 60, "weight": 1, "sub": "notes" },
+      { "key": "burstSpacingMs", "lo": 100, "hi": 165, "tolerance": 80, "weight": 2, "sub": "rhythm" },
+      { "key": "longNoteCount", "lo": 0, "hi": 0, "tolerance": 3, "weight": 2, "sub": "notes" },
+      { "key": "maxSqueakShare", "lo": 0, "hi": 0.8, "tolerance": 0.2, "weight": 1, "sub": "tone" }
+    ],
+    "subWeights": { "rhythm": 3, "notes": 2, "pitch": 0, "tone": 1 }
+  }
+}
