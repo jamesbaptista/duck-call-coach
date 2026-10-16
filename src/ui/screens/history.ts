@@ -13,7 +13,7 @@ import type { Cleanup, RenderScreen } from "./screen";
 
 const LOAD_FAILED_TEXT = "Your attempts couldn't be loaded.";
 const DELETE_CALL_FAILED_TEXT = "Couldn't delete these attempts. Try again.";
-const NOT_ON_CHART_NOTE = "Attempts that weren't judged or couldn't be analysed aren't on the chart.";
+const NOT_ON_CHART_NOTE = "Attempts that weren't judged or couldn't be analyzed aren't on the chart.";
 
 /** The History screen for one call: progress chart, attempt list and storage, plus Back up / Restore for everything. */
 class HistoryScreen {

@@ -62,7 +62,7 @@ export async function analyzeWithTimeout(
 }
 
 /**
- * Analyses the samples and builds the attempt. `pcm` is transferred to the worker, so it is unusable afterwards.
+ * Analyzes the samples and builds the attempt. `pcm` is transferred to the worker, so it is unusable afterwards.
  * If the analysis fails, the attempt keeps the recording with no scores and a note (see buildFailedAttempt).
  */
 export async function analyzeToAttempt(
@@ -83,7 +83,7 @@ export async function analyzeToAttempt(
   return { attempt: buildAttempt({ ...identity, recording, analysis, ...(await inputs) }), failure: null };
 }
 
-/** Analyses a saved attempt's recording again: decodes it, mixes it to mono, and keeps its id and time. */
+/** Analyzes a saved attempt's recording again: decodes it, mixes it to mono, and keeps its id and time. */
 export async function retryAnalysis(attempt: AttemptRecord): Promise<AnalyzedAttempt> {
   const recording: AttemptRecording = {
     blob: attempt.audio,

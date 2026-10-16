@@ -14,7 +14,7 @@ const UNKNOWN_DATE = "unknown date";
 /** A row's right-hand side: the score, or why there is none. */
 export function attemptStatus(attempt: Pick<AttemptMeta, "analysis" | "scores">): AttemptStatus {
   if (attempt.scores !== null) return { kind: "scored", text: `Score ${Math.round(attempt.scores.overall)}` };
-  if (isAnalysisFailed(attempt)) return { kind: "failed", text: "Couldn't analyse" };
+  if (isAnalysisFailed(attempt)) return { kind: "failed", text: "Couldn't analyze" };
   return { kind: "not-judged", text: "Not judged" };
 }
 

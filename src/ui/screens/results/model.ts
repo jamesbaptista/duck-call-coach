@@ -19,7 +19,7 @@ export const QUALITY_MESSAGES: Record<QualityIssue, string> = {
 
 export const PROCESSING_ON_NOTE = "Your phone may be cleaning up the sound, so tone scores are less reliable.";
 export const REFERENCE_INACTIVE_NOTE = "That reference is no longer active, so this shows the built-in target.";
-export const ANALYSIS_UNFINISHED_TEXT = "We couldn't finish analysing this recording.";
+export const ANALYSIS_UNFINISHED_TEXT = "We couldn't finish analyzing this recording.";
 export const NOT_FOUND_TEXT = "We couldn't find that attempt.";
 
 /** A sub-score as a whole number, or a dash when none of its measures could be taken. */

@@ -27,7 +27,7 @@ import { chartView, notices, qualityView, scoresView, tipsView } from "./results
 import type { Cleanup, RenderScreen } from "./screen";
 
 const MINE_LABELS: PlayerLabels = { play: "Play mine", stop: "Stop mine", failed: "Your recording couldn't be played" };
-const AUDIO_MISSING_NOTE = "Your recording of this attempt is missing, so it can't be played or analysed again.";
+const AUDIO_MISSING_NOTE = "Your recording of this attempt is missing, so it can't be played or analyzed again.";
 const DELETE_QUESTION = "Delete this attempt? Its recording and score can't be brought back.";
 
 /** Where the attempt came from: storage, or this page load's memory when saving failed. */
@@ -252,7 +252,7 @@ class ResultsScreen {
     return parts;
   }
 
-  /** Analyses the saved recording again; on success the attempt (same id) is replaced and shown. */
+  /** Analyzes the saved recording again; on success the attempt (same id) is replaced and shown. */
   private async retry(attempt: AttemptRecord, save: SaveState): Promise<void> {
     this.setBusy(true);
     this.show({ text: ANALYZING_TEXT });

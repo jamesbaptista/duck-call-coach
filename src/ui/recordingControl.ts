@@ -70,7 +70,7 @@ export class RecordingControl {
     return this.currentPhase;
   }
 
-  /** Keeps Record disabled while the screen does something else (analysing, importing, saving). Stop always works. */
+  /** Keeps Record disabled while the screen does something else (analyzing, importing, saving). Stop always works. */
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     this.refreshButton();

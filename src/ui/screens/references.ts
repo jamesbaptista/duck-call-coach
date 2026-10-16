@@ -42,7 +42,7 @@ const SAVE_FAILED_TEXT =
 const CHANGE_FAILED_TEXT = "Couldn't change the target. Try again.";
 const DELETE_FAILED_TEXT = "Couldn't delete that reference. Try again.";
 
-/** A recording or file that was analysed and can be saved as a reference once it has a name. */
+/** A recording or file that was analyzed and can be saved as a reference once it has a name. */
 interface Candidate {
   audio: Blob;
   mimeType: string;
@@ -51,7 +51,7 @@ interface Candidate {
   notes: Note[];
 }
 
-/** Samples to analyse, plus what the reference keeps if they turn out usable. */
+/** Samples to analyze, plus what the reference keeps if they turn out usable. */
 interface CandidateSource {
   pcm: Float32Array;
   sampleRate: number;
@@ -325,7 +325,7 @@ class ReferencesScreen {
   }
 
   /**
-   * Checks the file's size, type and length before decoding it, then decodes and analyses its first 15 s; a bad file
+   * Checks the file's size, type and length before decoding it, then decodes and analyzes its first 15 s; a bad file
    * leaves the target as it was.
    */
   private async importFile(file: File): Promise<void> {
@@ -364,7 +364,7 @@ class ReferencesScreen {
     });
   }
 
-  /** Analyses the samples (they go to the worker); a usable call becomes the candidate and the name form opens. */
+  /** Analyzes the samples (they go to the worker); a usable call becomes the candidate and the name form opens. */
   private async analyzeCandidate(source: CandidateSource): Promise<void> {
     this.showAdd({ text: ANALYZING_TEXT, notes: source.notes });
     let analysis: AnalysisResult;

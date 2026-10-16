@@ -78,7 +78,7 @@ function judge(analysis: AnalysisResult, targets: CallTargets): Pick<AttemptReco
   return { scores, tips: { problems, positive: positive === "" ? null : positive } };
 }
 
-/** The attempt record for a recording that was analysed. An attempt with a quality issue is saved unscored. */
+/** The attempt record for a recording that was analyzed. An attempt with a quality issue is saved unscored. */
 export function buildAttempt(input: BuildAttemptInput): AttemptRecord {
   const { analysis, reference } = input;
   const targets = chooseTargets(analysis.callType, reference, input.bestFlatness);
@@ -102,7 +102,7 @@ function errorDetail(error: unknown): string {
 }
 
 /**
- * The attempt saved when the analysis itself failed: the recording is kept so it can be analysed again.
+ * The attempt saved when the analysis itself failed: the recording is kept so it can be analyzed again.
  * It has no notes, no measurements, no quality issue and no scores; the note explaining why is its only tip.
  * (`noiseFloorDb` is 0 only because the field must hold a finite number; nothing reads it without measurements.)
  */

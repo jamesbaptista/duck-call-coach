@@ -26,8 +26,8 @@ describe("attemptStatus", () => {
     expect(attemptStatus(notJudged("a", 1))).toEqual({ kind: "not-judged", text: "Not judged" });
   });
 
-  it("says an attempt whose analysis failed couldn't be analysed", () => {
-    expect(attemptStatus(failed("a", 1))).toEqual({ kind: "failed", text: "Couldn't analyse" });
+  it("says an attempt whose analysis failed couldn't be analyzed", () => {
+    expect(attemptStatus(failed("a", 1))).toEqual({ kind: "failed", text: "Couldn't analyze" });
   });
 });
 

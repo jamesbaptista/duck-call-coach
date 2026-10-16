@@ -20,7 +20,7 @@ import { RecordingControl } from "../recordingControl";
 import { ClipPlayer, loadPracticeTarget } from "../target";
 import type { Cleanup, RenderScreen } from "./screen";
 
-/** The Practice screen: hear the target, record a call, then analyse, score, save and go to the results. */
+/** The Practice screen: hear the target, record a call, then analyze, score, save and go to the results. */
 class PracticeScreen {
   private disposed = false;
   /** True while Retry analysis runs. */
@@ -123,14 +123,14 @@ class PracticeScreen {
     }
   }
 
-  /** A finished recording is analysed and saved even if the screen was left meanwhile (see analyze()). */
+  /** A finished recording is analyzed and saved even if the screen was left meanwhile (see analyze()). */
   private onRecorded(recording: RecordingResult, startedAt: number): Promise<void> {
     const identity = { id: crypto.randomUUID(), createdAt: startedAt };
     // The worker takes the samples; Retry analysis decodes the saved recording instead of keeping a copy.
     return this.analyze(() => analyzeToAttempt(recording.pcm, recording.sampleRate, this.callType, recording, identity));
   }
 
-  /** Analyses and saves. After the screen is left it still saves, but no longer touches the detached DOM. */
+  /** Analyzes and saves. After the screen is left it still saves, but no longer touches the detached DOM. */
   private async analyze(run: () => Promise<AnalyzedAttempt>): Promise<void> {
     const { attempt, failure } = await run();
     const outcome = await saveOrRemember(attempt);
