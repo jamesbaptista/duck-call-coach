@@ -15,6 +15,14 @@ const CACHE_NAME = CACHE_PREFIX + VERSION;
 const NAVIGATION_TIMEOUT_MS = 3000;
 const SCOPE_PATH = new URL("./", self.location.href).pathname;
 const DIAGNOSTICS_PAGE = "diagnostics.html";
+/**
+ * Pages opened before an update keep running the old version's code, and load some of its files only later (the
+ * analysis worker, the recording worklet). The deploy has removed those files from the server, so the previous
+ * version's cache is kept for them.
+ */
+const PREVIOUS_VERSIONS_KEPT = 1;
+/** Each version's cache records when its install finished, under a URL outside the scope so no page can ask for it. */
+const INSTALLED_AT_KEY = new URL(`/${CACHE_PREFIX}installed-at`, self.location.origin).href;
 
 function scopedUrl(path) {
   return new URL(path, self.location.href).href;
@@ -34,30 +42,70 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || !url.pathname.startsWith(SCOPE_PATH)) return;
-  event.respondWith(request.mode === "navigate" ? networkFirst(request, url) : cacheFirst(request));
+  event.respondWith(request.mode === "navigate" ? networkFirst(request, url) : cacheFirst(request, event));
 });
 
 async function precache() {
   const cache = await caches.open(CACHE_NAME);
   // "reload" skips the HTTP cache, so every file comes from this deploy. One failure fails the install.
   await cache.addAll(ASSETS.map((path) => new Request(scopedUrl(path), { cache: "reload" })));
+  // Written last, so a cache left half-filled by a failed install has no date and is the first to go.
+  await cache.put(INSTALLED_AT_KEY, new Response(String(Date.now())));
 }
 
-async function deleteOldCaches() {
+/** Names of this app's caches from other versions. */
+async function otherVersionCaches() {
   const names = await caches.keys();
-  const old = names.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
-  await Promise.all(old.map((name) => caches.delete(name)));
+  return names.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
 }
 
-/** Pages: the newest copy when the network answers in time, otherwise the precached page. */
-async function networkFirst(request, url) {
-  try {
-    return await fetchWithTimeout(request, NAVIGATION_TIMEOUT_MS);
-  } catch {
-    const page = url.pathname.endsWith(`/${DIAGNOSTICS_PAGE}`) ? DIAGNOSTICS_PAGE : "index.html";
-    const cache = await caches.open(CACHE_NAME);
-    return (await cache.match(scopedUrl(page))) ?? Response.error();
+async function installedAt(name) {
+  const record = await (await caches.open(name)).match(INSTALLED_AT_KEY);
+  const time = record ? Number(await record.text()) : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+/** Keeps this version and the newest previous one; deletes the rest. */
+async function deleteOldCaches() {
+  const others = await otherVersionCaches();
+  const dated = await Promise.all(others.map(async (name) => ({ name, time: await installedAt(name) })));
+  dated.sort((a, b) => b.time - a.time);
+  await Promise.all(dated.slice(PREVIOUS_VERSIONS_KEPT).map(({ name }) => caches.delete(name)));
+}
+
+/** This version's copy, else a kept previous version's, for pages still running that version. */
+async function cachedResponse(request) {
+  // Each URL has one content per deploy, so ignore Vary: a server's "Vary: Origin" would otherwise make
+  // <script type="module" crossorigin> (which sends Origin) miss files precached without it.
+  const options = { ignoreVary: true };
+  const current = await (await caches.open(CACHE_NAME)).match(request, options);
+  if (current) return current;
+  for (const name of await otherVersionCaches()) {
+    const previous = await (await caches.open(name)).match(request, options);
+    if (previous) return previous;
   }
+  return undefined;
+}
+
+/**
+ * Pages: the newest copy when the network answers in time, otherwise the cached page. "no-cache" makes the
+ * browser check with the server rather than reuse its own copy from the last few minutes, which may name files
+ * a deploy has removed. A 404 is a real answer and is shown; a server error is worse than the cached app.
+ */
+async function networkFirst(request, url) {
+  let response;
+  try {
+    response = await fetchWithTimeout(new Request(request, { cache: "no-cache" }), NAVIGATION_TIMEOUT_MS);
+  } catch {
+    return (await cachedPage(url)) ?? Response.error();
+  }
+  if (response.status >= 500) return (await cachedPage(url)) ?? response;
+  return response;
+}
+
+function cachedPage(url) {
+  const page = url.pathname.endsWith(`/${DIAGNOSTICS_PAGE}`) ? DIAGNOSTICS_PAGE : "index.html";
+  return cachedResponse(scopedUrl(page));
 }
 
 function fetchWithTimeout(request, timeoutMs) {
@@ -69,23 +117,26 @@ function fetchWithTimeout(request, timeoutMs) {
   });
 }
 
-/** Everything else: the cached copy, or the network (keeping a good same-origin answer for next time). */
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  // Each URL has one content per deploy, so ignore Vary: a server's "Vary: Origin" would otherwise make
-  // <script type="module" crossorigin> (which sends Origin) miss files precached without it.
-  const cached = await cache.match(request, { ignoreVary: true });
+/**
+ * Everything else: a cached copy, or the network. A good same-origin answer is kept for next time, in the
+ * background, so the page gets it without waiting for the write.
+ */
+async function cacheFirst(request, event) {
+  const cached = await cachedResponse(request);
   if (cached) {
     const range = request.headers.get("Range");
     return range === null ? cached : rangeResponse(cached, range);
   }
   const response = await fetch(request);
   if (response.status === 200 && response.type === "basic") {
-    try {
-      await cache.put(request, response.clone());
-    } catch {
-      // Out of space, for example: the answer is still good to use.
-    }
+    const copy = response.clone();
+    // A failed write (out of space, for example) doesn't matter: the answer is still good to use.
+    event.waitUntil(
+      caches
+        .open(CACHE_NAME)
+        .then((cache) => cache.put(request, copy))
+        .catch(() => undefined),
+    );
   }
   return response;
 }
