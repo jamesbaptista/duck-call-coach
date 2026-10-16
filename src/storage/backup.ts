@@ -1,6 +1,16 @@
+import type { CallType } from "../analysis/types";
 import { encodeBase64 } from "./base64";
-import { BACKUP_FORMAT, BACKUP_VERSION, BackupError, MAX_BACKUP_CHARS, readBackup, type BackupData } from "./backupSchema";
-import type { Store } from "./db";
+import {
+  BACKUP_FORMAT,
+  BACKUP_VERSION,
+  BackupError,
+  MAX_BACKUP_CHARS,
+  problemText,
+  readBackup,
+  type BackupData,
+  type RecordProblem,
+} from "./backupSchema";
+import type { AttemptRecord, ReferenceRecord, Store } from "./db";
 
 export { BackupError, isAudioMimeType, MAX_AUDIO_BYTES, MAX_BACKUP_CHARS, type BackupData } from "./backupSchema";
 
@@ -16,6 +26,14 @@ export function isBackupFileTooBig(sizeBytes: number): boolean {
   return sizeBytes > MAX_BACKUP_CHARS;
 }
 
+/** What a describer is told about a record, to name it in a message. */
+export type BackupRecordSummary =
+  | { kind: "attempt"; callType: CallType; createdAt: number }
+  | { kind: "reference"; callType: CallType; name: string };
+
+/** Names a record for the user, such as "Feed Chuckle attempt from Oct 16, 2026". */
+export type RecordDescriber = (record: BackupRecordSummary) => string;
+
 /** A stored record as it appears in the file: the audio becomes base64 text, and the read-back flag is dropped. */
 async function toFileRecord<T extends { audio: Blob; audioMissing?: true }>(
   record: T,
@@ -25,8 +43,11 @@ async function toFileRecord<T extends { audio: Blob; audioMissing?: true }>(
   return { ...rest, audio: encodeBase64(new Uint8Array(await audio.arrayBuffer())) };
 }
 
-/** Everything the app stores, as one JSON file the user can keep. Audio is base64 text. Throws BackupError if the file would not restore. */
-export async function exportBackup(store: Store): Promise<Blob> {
+/**
+ * Everything the app stores, as one JSON file the user can keep. Audio is base64 text. Throws BackupError if the
+ * file would not restore, naming the bad record with `describe` when given (else by its place: "Attempt 2").
+ */
+export async function exportBackup(store: Store, describe?: RecordDescriber): Promise<Blob> {
   const { attempts, references } = await store.getAllRecords();
   const exportedAt = new Date().toISOString();
   const fileAttempts = await Promise.all(attempts.map(toFileRecord));
@@ -38,7 +59,7 @@ export async function exportBackup(store: Store): Promise<Blob> {
     fileReferences.map((record) => JSON.stringify(record)).join(","),
     "]}",
   ].join("");
-  assertRestorable(text);
+  assertRestorable(text, (problem) => recordName(problem, attempts, references, describe));
   const file = new Blob([text], { type: "application/json" });
   if (isBackupFileTooBig(file.size)) {
     throw new BackupError(`This backup would not restore: it is larger than ${MAX_BACKUP_CHARS / BYTES_PER_MB} MB.`);
@@ -46,13 +67,32 @@ export async function exportBackup(store: Store): Promise<Blob> {
   return file;
 }
 
+/** The describer's name for the record a problem is in, or undefined to keep the file's own "Attempt 2". */
+function recordName(
+  { list, index }: RecordProblem,
+  attempts: readonly AttemptRecord[],
+  references: readonly ReferenceRecord[],
+  describe: RecordDescriber | undefined,
+): string | undefined {
+  if (describe === undefined) return undefined;
+  if (list === "attempts") {
+    const attempt = attempts[index];
+    return attempt && describe({ kind: "attempt", callType: attempt.callType, createdAt: attempt.createdAt });
+  }
+  const reference = references[index];
+  return reference && describe({ kind: "reference", callType: reference.callType, name: reference.name });
+}
+
 /** Fails now, while the user can still react, rather than handing out a file that restore would refuse. */
-function assertRestorable(text: string): void {
+function assertRestorable(text: string, nameRecord: (problem: RecordProblem) => string | undefined): void {
   try {
     parseBackup(text);
   } catch (error) {
-    if (error instanceof BackupError) throw new BackupError(`This backup would not restore: ${error.message}`);
-    throw error;
+    if (!(error instanceof BackupError)) throw error;
+    const { record } = error;
+    const name = record && nameRecord(record);
+    const reason = record && name !== undefined ? problemText(name, record.path, record.problem) : error.message;
+    throw new BackupError(`This backup would not restore: ${reason}`, record);
   }
 }
 

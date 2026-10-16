@@ -10,6 +10,7 @@ import {
   MAX_AUDIO_BYTES,
   MAX_BACKUP_CHARS,
   parseBackup,
+  type BackupRecordSummary,
 } from "../../src/storage/backup";
 import { createStore, openDb, type AttemptRecord, type Store } from "../../src/storage/db";
 import { analysisOf, attempt, bytesOf, MEASUREMENTS, reference, scoresOf } from "../helpers/records";
@@ -138,6 +139,31 @@ describe("exportBackup refuses a backup that would not restore", () => {
 
     await expect(exportBackup(store)).rejects.toBeInstanceOf(BackupError);
     await expect(exportBackup(store)).rejects.toThrow(/^This backup would not restore: Attempt 1: .*measurements\.flatness/);
+  });
+
+  it("names the bad record with the describer it is given", async () => {
+    const { store } = await newStore();
+    await store.saveAttempt(richAttempt("good", "quack", 3000));
+    const bad = richAttempt("bad", "hail", 2000);
+    bad.analysis.measurements = { ...MEASUREMENTS, flatness: NaN };
+    await store.saveAttempt(bad);
+    const describe = (record: BackupRecordSummary): string =>
+      record.kind === "attempt" ? `${record.callType} attempt at ${record.createdAt}` : `${record.callType} reference ${record.name}`;
+
+    await expect(exportBackup(store, describe)).rejects.toThrow(
+      /^This backup would not restore: hail attempt at 2000: analysis\.measurements\.flatness /,
+    );
+  });
+
+  it("names a bad reference by its call and name", async () => {
+    const { store } = await newStore();
+    await store.saveReference({ ...reference("r1", "chuckle", 1), measurements: { ...MEASUREMENTS, flatness: NaN } });
+    const describe = (record: BackupRecordSummary): string =>
+      record.kind === "reference" ? `${record.callType} reference ${record.name}` : "an attempt";
+
+    await expect(exportBackup(store, describe)).rejects.toThrow(
+      /^This backup would not restore: chuckle reference Reference r1: measurements\.flatness /,
+    );
   });
 });
 

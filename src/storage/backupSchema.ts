@@ -43,9 +43,23 @@ export function isAudioMimeType(mimeType: string): boolean {
   return mimeType.length <= MAX_MIME_TYPE_LENGTH && VALID_AUDIO_MIME_TYPE.test(mimeType);
 }
 
+/** Which record of the file a problem is in: its list and its place in that list (from 0). */
+export interface RecordProblem {
+  list: "attempts" | "references";
+  index: number;
+  /** The field inside the record, such as "analysis.notes[1].peakDb"; empty for the record as a whole. */
+  path: string;
+  /** What is wrong, as the end of a sentence: "must be a number." */
+  problem: string;
+}
+
 /** Thrown for any problem with a backup file; the message is plain English and safe to show. */
 export class BackupError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Set when the problem is inside one record, so the message can be reworded to name it. */
+    readonly record?: RecordProblem,
+  ) {
     super(message);
     this.name = "BackupError";
   }
@@ -63,18 +77,26 @@ type Raw = Record<string, unknown>;
 interface Where {
   label: string;
   path: string;
+  /** The record the value belongs to, if any. */
+  record?: Pick<RecordProblem, "list" | "index">;
+}
+
+/** "Attempt 3: analysis.notes[1].peakDb must be a number.", or "Attempt 3 must be an object." for the whole record. */
+export function problemText(label: string, path: string, problem: string): string {
+  return `${path === "" ? label : `${label}: ${path}`} ${problem}`;
 }
 
 function fail(at: Where, problem: string): never {
-  throw new BackupError(`${at.path === "" ? at.label : `${at.label}: ${at.path}`} ${problem}`);
+  const record = at.record && { ...at.record, path: at.path, problem };
+  throw new BackupError(problemText(at.label, at.path, problem), record);
 }
 
 function field(at: Where, key: string): Where {
-  return { label: at.label, path: at.path === "" ? key : `${at.path}.${key}` };
+  return { ...at, path: at.path === "" ? key : `${at.path}.${key}` };
 }
 
 function item(at: Where, index: number): Where {
-  return { label: at.label, path: `${at.path}[${index}]` };
+  return { ...at, path: `${at.path}[${index}]` };
 }
 
 function readObject(value: unknown, at: Where): Raw {
@@ -340,14 +362,14 @@ function readReference(value: unknown, at: Where): ReferenceRecord {
 /** Reads a list of records, rejecting an id that appears twice. */
 function readRecords<T extends { id: string }>(
   value: unknown,
-  listName: string,
+  listName: RecordProblem["list"],
   noun: string,
   read: (value: unknown, at: Where) => T,
 ): T[] {
   const list = readArray(value, { label: "The backup", path: listName }, MAX_RECORDS_PER_LIST);
   const firstIndexOfId = new Map<string, number>();
   return list.map((raw, i) => {
-    const at: Where = { label: `${noun} ${i + 1}`, path: "" };
+    const at: Where = { label: `${noun} ${i + 1}`, path: "", record: { list: listName, index: i } };
     const record = read(raw, at);
     const first = firstIndexOfId.get(record.id);
     if (first !== undefined) fail(at, `has the same id as ${noun.toLowerCase()} ${first + 1}.`);

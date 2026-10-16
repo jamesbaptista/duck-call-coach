@@ -1,6 +1,6 @@
 import { BackupError, exportBackup, importBackup, isBackupFileTooBig, parseBackup } from "../../../storage/backup";
 import { getDefaultStore } from "../../../storage/db";
-import { backupFileName } from "../../backupFile";
+import { backupFileName, describeBackupRecord } from "../../backupFile";
 import { button, el } from "../../dom";
 import { clearStatus, errorDetail, renderStatus, type StatusMessage } from "../../messages";
 import { restoreResultText } from "./model";
@@ -159,7 +159,7 @@ export class DataSection {
 
   private async backUp(): Promise<void> {
     renderStatus(this.backupStatus, { text: PREPARING_TEXT });
-    const blob = await exportBackup(await getDefaultStore());
+    const blob = await exportBackup(await getDefaultStore(), describeBackupRecord);
     if (this.options.isDisposed()) return;
     const fileName = backupFileName(new Date());
     this.download(blob, fileName);

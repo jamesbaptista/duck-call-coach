@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isBackupFileTooBig, MAX_BACKUP_CHARS } from "../../src/storage/backup";
-import { backupFileName } from "../../src/ui/backupFile";
+import { backupFileName, describeBackupRecord } from "../../src/ui/backupFile";
 
 describe("backupFileName", () => {
   it("names the file after the local date, zero-padded", () => {
@@ -20,5 +20,28 @@ describe("isBackupFileTooBig", () => {
 
   it("allows an empty file (parseBackup then explains what is wrong with it)", () => {
     expect(isBackupFileTooBig(0)).toBe(false);
+  });
+});
+
+describe("describeBackupRecord", () => {
+  const format = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+
+  it("names an attempt by its call and when it was recorded", () => {
+    const createdAt = Date.UTC(2026, 9, 16, 15, 45);
+    expect(describeBackupRecord({ kind: "attempt", callType: "chuckle", createdAt }, format)).toBe(
+      `Feed Chuckle attempt from ${format.format(createdAt)}`,
+    );
+  });
+
+  it("names a reference by its call and name", () => {
+    expect(describeBackupRecord({ kind: "reference", callType: "hail", name: "Dawn hen" }, format)).toBe(
+      "Greeting / Hail reference “Dawn hen”",
+    );
+  });
+
+  it("copes with a date that can't be shown", () => {
+    expect(describeBackupRecord({ kind: "attempt", callType: "quack", createdAt: Number.NaN }, format)).toMatch(
+      /^Quack attempt from /,
+    );
   });
 });
