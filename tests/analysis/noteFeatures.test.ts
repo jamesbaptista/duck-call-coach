@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { flatness, fundamentalHz, liveResonanceHz, resonanceHz, squeakShare } from "../../src/analysis/noteFeatures";
+import {
+  flatness,
+  fundamentalHz,
+  liveResonanceHz,
+  resonanceHz,
+  spectralPeaks,
+  squeakShare,
+} from "../../src/analysis/noteFeatures";
 import { frameLevelsDb } from "../../src/analysis/frames";
 import { highPass } from "../../src/analysis/filter";
 import { findNotes, noiseFloorDb } from "../../src/analysis/notes";
@@ -34,6 +41,13 @@ describe("note features on synthetic notes", () => {
     const f0 = fundamentalHz(quack, SR, 0, quack.length);
     expect(f0).not.toBeNull();
     expect(Math.abs((f0 as number) - 350)).toBeLessThan(15);
+  });
+
+  it("gives resonance and fundamental from one spectrum, matching the single-value functions", () => {
+    const peaks = spectralPeaks(quack, SR, 0, quack.length);
+    expect(peaks.resonanceHz).toBe(resonanceHz(quack, SR, 0, quack.length));
+    expect(peaks.fundamentalHz).toBe(fundamentalHz(quack, SR, 0, quack.length));
+    expect(Math.abs(peaks.resonanceHz - 2100)).toBeLessThan(60);
   });
 
   it("gives a harmonic note a low squeak share and a pure high sine a high one", () => {
@@ -75,6 +89,7 @@ describe("degenerate ranges", () => {
     expect(flatness(x, SR, s0, s1)).toBeNaN();
     expect(fundamentalHz(x, SR, s0, s1)).toBeNull();
     expect(squeakShare(x, SR, s0, s1)).toBe(0);
+    expect(spectralPeaks(x, SR, s0, s1)).toEqual({ resonanceHz: Number.NaN, fundamentalHz: null });
   });
 
   it("returns a squeak share of 0 when the range holds no full slice", () => {

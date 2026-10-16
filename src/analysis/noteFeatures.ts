@@ -7,8 +7,12 @@ const POWER_EPSILON = 1e-12;
 const MIN_RANGE_SAMPLES = 2;
 /** Stand-in for the -Infinity an AnalyserNode reports for digital silence. */
 const SILENT_DB = -200;
-/** Short notes are zero-padded to at least this long, so bins stay fine enough to smooth over. */
-const MIN_FFT_SECONDS = 0.25;
+
+/** Resonance and fundamental of one note, both read from the same spectrum. */
+export interface SpectralPeaks {
+  resonanceHz: number;
+  fundamentalHz: number | null;
+}
 
 interface NoteSpectrum {
   logPowerDb: Float64Array;
@@ -64,9 +68,9 @@ function argMax(values: ArrayLike<number>, first: number, last: number): number 
   return best;
 }
 
-/** Log power (dB) of a Hann-windowed note, padded to at least a quarter second, with its smoothed copy. */
+/** Log power (dB) of a Hann-windowed note, padded to at least minNoteFftS, with its smoothed copy. */
 function noteSpectrum(segment: Float32Array, sampleRate: number): NoteSpectrum {
-  const nfft = nextPow2(Math.max(segment.length, Math.floor(sampleRate * MIN_FFT_SECONDS)));
+  const nfft = nextPow2(Math.max(segment.length, Math.floor(sampleRate * ANALYSIS.minNoteFftS)));
   const power = powerSpectrum(segment, nfft);
   const logPowerDb = new Float64Array(power.length);
   for (let i = 0; i < power.length; i++) logPowerDb[i] = 10 * Math.log10(power[i] + POWER_EPSILON);
@@ -78,14 +82,6 @@ function noteSpectrum(segment: Float32Array, sampleRate: number): NoteSpectrum {
 function resonancePeakHz(smoothDb: Float64Array, binHz: number): number | null {
   const band = bandBins(smoothDb.length, binHz, ANALYSIS.resonanceLoHz, ANALYSIS.resonanceHiHz);
   return band ? argMax(smoothDb, band[0], band[1]) * binHz : null;
-}
-
-/** Where the note's energy peaks between 800 and 4000 Hz (its "resonance"); NaN for an empty range. */
-export function resonanceHz(x: Float32Array, sampleRate: number, s0: number, s1: number): number {
-  const segment = noteSegment(x, s0, s1);
-  if (!segment) return Number.NaN;
-  const { smoothDb, binHz } = noteSpectrum(segment, sampleRate);
-  return resonancePeakHz(smoothDb, binHz) ?? Number.NaN;
 }
 
 /** The fundamental-band spectrum with its smooth trend removed and its mean subtracted. */
@@ -113,12 +109,9 @@ function autocorrelationAt(x: Float64Array, lag: number): number {
 
 /**
  * Fundamental from harmonic spacing: the lag (100-700 Hz) at which the detrended 1-4 kHz log spectrum
- * best repeats itself. Null when the repeat is weaker than fundMinStrength, or the range is empty.
+ * best repeats itself. Null when the repeat is weaker than fundMinStrength.
  */
-export function fundamentalHz(x: Float32Array, sampleRate: number, s0: number, s1: number): number | null {
-  const segment = noteSegment(x, s0, s1);
-  if (!segment) return null;
-  const spectrum = noteSpectrum(segment, sampleRate);
+function harmonicSpacingHz(spectrum: NoteSpectrum): number | null {
   const band = detrendedBand(spectrum);
   if (!band) return null;
 
@@ -138,6 +131,30 @@ export function fundamentalHz(x: Float32Array, sampleRate: number, s0: number, s
     }
   }
   return bestValue / energy >= ANALYSIS.fundMinStrength ? bestLag * binHz : null;
+}
+
+/**
+ * Resonance (peak of the 150 Hz-smoothed spectrum between 800 and 4000 Hz) and fundamental (harmonic
+ * spacing) of the note in [s0, s1), from a single FFT. NaN resonance and null fundamental for an empty range.
+ */
+export function spectralPeaks(x: Float32Array, sampleRate: number, s0: number, s1: number): SpectralPeaks {
+  const segment = noteSegment(x, s0, s1);
+  if (!segment) return { resonanceHz: Number.NaN, fundamentalHz: null };
+  const spectrum = noteSpectrum(segment, sampleRate);
+  return {
+    resonanceHz: resonancePeakHz(spectrum.smoothDb, spectrum.binHz) ?? Number.NaN,
+    fundamentalHz: harmonicSpacingHz(spectrum),
+  };
+}
+
+/** Where the note's energy peaks between 800 and 4000 Hz (its "resonance"); NaN for an empty range. */
+export function resonanceHz(x: Float32Array, sampleRate: number, s0: number, s1: number): number {
+  return spectralPeaks(x, sampleRate, s0, s1).resonanceHz;
+}
+
+/** The note's fundamental from its harmonic spacing; null when too weak or the range is empty. */
+export function fundamentalHz(x: Float32Array, sampleRate: number, s0: number, s1: number): number | null {
+  return spectralPeaks(x, sampleRate, s0, s1).fundamentalHz;
 }
 
 /** Prefix sums of `values`, so any bin range can be summed in constant time. */

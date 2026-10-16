@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ANALYSIS, ANALYZER_VERSION } from "../../src/config/analysis";
 import { nextPow2, powerSpectrum } from "../../src/analysis/fft";
 import { highPass } from "../../src/analysis/filter";
-import { frameLevelsDb } from "../../src/analysis/frames";
+import { SILENT_FRAME_DB, frameLevelsDb, spanSampleRange } from "../../src/analysis/frames";
 import { concat, harmonicNote, silence, sine, whiteNoise } from "../helpers/synth";
 
 const SR = 48000;
@@ -52,6 +52,7 @@ describe("ANALYSIS config", () => {
       fundLagLoHz: 100,
       fundLagHiHz: 700,
       fundMinStrength: 0.25,
+      minNoteFftS: 0.25,
       squeakSliceS: 0.03,
       squeakHopS: 0.015,
       squeakLoHz: 2600,
@@ -63,6 +64,9 @@ describe("ANALYSIS config", () => {
       flatHiHz: 6000,
       sequenceGapS: 0.6,
       burstGapS: 0.25,
+      minCallNotes: 3,
+      minSlopeNotes: 3,
+      longNoteMs: 150,
       minSnrDb: 15,
       clipLevel: 0.99,
       clipFraction: 0.005,
@@ -178,12 +182,24 @@ describe("frameLevelsDb", () => {
   it("reports silence at the 1e-9 floor (-180 dB)", () => {
     const levels = frameLevelsDb(silence(0.1, SR), SR);
     expect(levels[0]).toBeCloseTo(-180, 4);
+    expect(levels[0]).toBeCloseTo(SILENT_FRAME_DB, 4);
   });
 
   it("tracks level changes: a 20 dB quieter segment reads 20 dB lower", () => {
     const x = concat(sine(1000, 0.2, SR, 0.5), sine(1000, 0.2, SR, 0.05));
     const levels = frameLevelsDb(x, SR);
     expect(levels[0] - levels[levels.length - 1]).toBeCloseTo(20, 0);
+  });
+});
+
+describe("spanSampleRange", () => {
+  it("runs from the first frame's start to one frame past the end frame's start (research script)", () => {
+    expect(spanSampleRange({ startFrame: 10, endFrame: 25 }, SR, SR)).toEqual([4800, 25 * 480 + 1920]);
+    expect(spanSampleRange({ startFrame: 10, endFrame: 25 }, 44100, 44100)).toEqual([4410, 25 * 441 + 1764]);
+  });
+
+  it("clamps the end to the signal", () => {
+    expect(spanSampleRange({ startFrame: 0, endFrame: 3 }, SR, 2000)).toEqual([0, 2000]);
   });
 });
 

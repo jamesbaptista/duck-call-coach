@@ -34,6 +34,8 @@ export const ANALYSIS = Object.freeze({
   fundLagLoHz: 100,
   fundLagHiHz: 700,
   fundMinStrength: 0.25,
+  // Short notes are zero-padded to at least this long before the resonance/fundamental FFT (research script).
+  minNoteFftS: 0.25,
 
   // Squeak detection (spec section 4).
   squeakSliceS: 0.03,
@@ -51,6 +53,12 @@ export const ANALYSIS = Object.freeze({
   // Call grouping (spec section 4).
   sequenceGapS: 0.6,
   burstGapS: 0.25,
+  // Fewest notes a hail, comeback or chuckle needs before it is scored.
+  minCallNotes: 3,
+  // Fewest notes a per-note resonance slope is fitted over (research script).
+  minSlopeNotes: 3,
+  // Notes longer than this count as long quacks (chuckle "longNoteCount").
+  longNoteMs: 150,
 
   // Recording quality gates (spec section 4).
   minSnrDb: 15,

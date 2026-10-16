@@ -24,7 +24,8 @@ export function noiseFloorDb(levels: Float32Array): number {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 
-function peakOf(levels: Float32Array, from: number, to: number): number {
+/** Loudest level in frames [from, to); -Infinity for an empty range. */
+export function peakOf(levels: Float32Array, from: number, to: number): number {
   let peak = -Infinity;
   for (let i = from; i < to; i++) peak = Math.max(peak, levels[i]);
   return peak;
