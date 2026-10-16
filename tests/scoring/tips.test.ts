@@ -99,7 +99,7 @@ describe("selectTips", () => {
   it("formats the loudest note as an ordinal", () => {
     const scores = scoresOf([measure("loudestIndex", 3, { lo: 0, hi: 1 }, 4)]);
     expect(selectTips("hail", scores).problems).toEqual([
-      "Your loudest note came late (note 4th). Hit the first notes hardest, then taper off.",
+      "Your loudest note came late (your 4th note). Hit the first notes hardest, then taper off.",
     ]);
   });
 });

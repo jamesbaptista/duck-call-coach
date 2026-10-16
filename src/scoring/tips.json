@@ -7,7 +7,7 @@
   "any.fadeDb.low": "Your last note is nearly as loud as your loudest. Ease off the air so each note gets softer.",
   "any.lastFirstRatio.high": "Your notes stay long all the way through. Make each note a little shorter than the one before.",
   "any.lastFirstRatio.low": "Your notes shrink too fast. Let the first few notes ring a little longer.",
-  "any.loudestIndex.high": "Your loudest note came late (note {value}). Hit the first notes hardest, then taper off.",
+  "any.loudestIndex.high": "Your loudest note came late (your {value} note). Hit the first notes hardest, then taper off.",
   "any.resonanceHz.high": "Your call sounds high and thin ({value}; hens sit around {lo}-{hi}). Use less air pressure and cup your hand more around the end of the call.",
   "any.resonanceHz.low": "Your call sounds low and muffled ({value}; hens sit around {lo}-{hi}). Open your hand a little and push a bit more air.",
   "any.resonanceSlopeHzPerNote.high": "Your notes climb in pitch. Let each note drop a little, like a hen settling down.",
