@@ -3,6 +3,7 @@ import { AutoStop } from "../capture/autostop";
 import { startRecording, type RecordingResult, type RecordingSession } from "../capture/recorder";
 import { button } from "./dom";
 import { MAX_RECORDING_S } from "./limits";
+import { BACKGROUND_STOP_TEXT, discardsWhenHidden, LEFT_PAGE_TEXT } from "./recordingInterruption";
 import { LiveView } from "./liveView";
 import {
   ANALYZING_TEXT,
@@ -59,11 +60,17 @@ export class RecordingControl {
   /** True after the microphone was blocked, until the browser reports it may work again. */
   private micBlocked = false;
   private stopWatchingMic: Cleanup | null = null;
-  private readonly onPageHide = (): void => this.abandon();
+  private readonly onPageHide = (): void => {
+    if (this.currentPhase === "recording") this.discard(LEFT_PAGE_TEXT);
+  };
+  private readonly onVisibilityChange = (): void => {
+    if (discardsWhenHidden(this.currentPhase, document.visibilityState)) this.discard(BACKGROUND_STOP_TEXT);
+  };
 
   constructor(private readonly options: RecordingControlOptions) {
     this.button.addEventListener("click", () => this.onClick());
     window.addEventListener("pagehide", this.onPageHide);
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   get phase(): RecordingPhase {
@@ -85,6 +92,7 @@ export class RecordingControl {
     this.stopWatchingMic?.();
     this.stopWatchingMic = null;
     window.removeEventListener("pagehide", this.onPageHide);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   private setPhase(phase: RecordingPhase): void {
@@ -196,14 +204,16 @@ export class RecordingControl {
     if (!this.disposed) this.setPhase("idle");
   }
 
-  /** Leaving the page mid-recording throws the recording away rather than keeping the microphone open. */
-  private abandon(): void {
-    if (this.currentPhase !== "recording") return;
+  /**
+   * Leaving or hiding the page mid-recording throws the recording away rather than keeping the microphone open,
+   * and says why in `text`.
+   */
+  private discard(text: string): void {
     clearTimeout(this.hardStopTimer);
     this.session?.cancel();
     this.session = null;
     this.live.hide();
     this.setPhase("idle");
-    this.options.show({ text: "Recording stopped because you left the page. Tap Record to try again." });
+    this.options.show({ text });
   }
 }
