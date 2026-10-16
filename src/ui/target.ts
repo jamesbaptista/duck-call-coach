@@ -1,5 +1,5 @@
-import type { CallType } from "../../../analysis/types";
-import { getDefaultStore, type ReferenceRecord } from "../../../storage/db";
+import type { CallType } from "../analysis/types";
+import { getDefaultStore, type ReferenceRecord } from "../storage/db";
 
 /** What Play target plays: the active reference's recording, or a bundled hen clip. */
 export interface TargetClip {

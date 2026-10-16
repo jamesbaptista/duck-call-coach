@@ -4,11 +4,10 @@ import { liveResonanceHz } from "../../analysis/noteFeatures";
 import type { CallType } from "../../analysis/types";
 import { loadTargets } from "../../scoring/score";
 import type { AttemptRecord } from "../../storage/db";
+import { chooseTargets } from "../attempt";
 import { button, el } from "../dom";
 import { CALL_NAMES, confidenceText } from "../labels";
 import { navigate, routeHref } from "../router";
-import { chooseTargets } from "../attempt";
-import { LiveView } from "./practice/live";
 import {
   ANALYSIS_FAILED_TEXT,
   ANALYZING_TEXT,
@@ -18,9 +17,10 @@ import {
   SAVE_FAILED_TEXT,
   watchMicPermission,
   type StatusMessage,
-} from "./practice/messages";
-import { analyzeToAttempt, retryAnalysis, saveOrRemember, type AnalyzedAttempt } from "./practice/pipeline";
-import { ClipPlayer, loadPracticeTarget } from "./practice/target";
+} from "../messages";
+import { analyzeToAttempt, retryAnalysis, saveOrRemember, type AnalyzedAttempt } from "../pipeline";
+import { ClipPlayer, loadPracticeTarget } from "../target";
+import { LiveView } from "./practice/live";
 import type { Cleanup, RenderScreen } from "./screen";
 
 type Phase = "idle" | "starting" | "recording" | "finishing" | "analyzing";

@@ -11,9 +11,9 @@ import {
   renderStatus,
   SAVE_FAILED_TEXT,
   type StatusMessage,
-} from "./practice/messages";
-import { retryAnalysis, saveOrRemember } from "./practice/pipeline";
-import { ClipPlayer, loadActiveReference, targetClip, type PlayerLabels, type TargetClip } from "./practice/target";
+} from "../messages";
+import { retryAnalysis, saveOrRemember } from "../pipeline";
+import { ClipPlayer, loadActiveReference, targetClip, type PlayerLabels, type TargetClip } from "../target";
 import {
   ANALYSIS_UNFINISHED_TEXT,
   chartTarget,

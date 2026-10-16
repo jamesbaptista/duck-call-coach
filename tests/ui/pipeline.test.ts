@@ -3,7 +3,7 @@ import { analyze } from "../../src/analysis/analyze";
 import type { AnalysisResult } from "../../src/analysis/types";
 import { analyzeInWorker } from "../../src/analysis/client";
 import { buildAttempt, isAnalysisFailed } from "../../src/ui/attempt";
-import { ANALYSIS_TIMEOUT_MS, analyzeToAttempt } from "../../src/ui/screens/practice/pipeline";
+import { ANALYSIS_TIMEOUT_MS, analyzeToAttempt } from "../../src/ui/pipeline";
 import { readWav } from "../helpers/wav";
 
 vi.mock("../../src/analysis/client", () => ({ analyzeInWorker: vi.fn() }));

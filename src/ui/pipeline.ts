@@ -1,9 +1,9 @@
-import { analyzeInWorker } from "../../../analysis/client";
-import type { AnalysisResult, CallType } from "../../../analysis/types";
-import { getDefaultStore, type AttemptRecord } from "../../../storage/db";
-import { forgetUnsavedAttempt, rememberUnsavedAttempt } from "../../session";
-import { withTimeout } from "../../timeout";
-import { buildAttempt, buildFailedAttempt, type AttemptRecording, type ScoringReference } from "../../attempt";
+import { analyzeInWorker } from "../analysis/client";
+import type { AnalysisResult, CallType } from "../analysis/types";
+import { getDefaultStore, type AttemptRecord } from "../storage/db";
+import { forgetUnsavedAttempt, rememberUnsavedAttempt } from "./session";
+import { withTimeout } from "./timeout";
+import { buildAttempt, buildFailedAttempt, type AttemptRecording, type ScoringReference } from "./attempt";
 import { decodeToMono } from "./decode";
 
 /**

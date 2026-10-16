@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mixToMono } from "../../src/ui/screens/practice/decode";
+import { mixToMono } from "../../src/ui/decode";
 
 describe("mixToMono", () => {
   it("returns a copy of a single channel", () => {

@@ -1,8 +1,8 @@
-import { describeCaptureError } from "../../capture-error";
-import { el } from "../../dom";
-import type { Cleanup } from "../screen";
+import { describeCaptureError } from "./capture-error";
+import { el } from "./dom";
+import type { Cleanup } from "./screens/screen";
 
-/** What the Practice screen's live status region says. Everything is shown as text. */
+/** What a screen's live status region says (Practice, Results). Everything is shown as text. */
 export interface StatusMessage {
   text: string;
   /** Numbered steps, for example how to allow the microphone. */
