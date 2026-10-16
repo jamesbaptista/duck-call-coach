@@ -1,5 +1,5 @@
 {
-  "any.spacingMs.low": "Your notes are {value} ms apart; a hen's are {lo}-{hi} ms. Slow down and give each note its own 'quack'.",
+  "any.spacingMs.low": "Your notes are {value} ms apart; your target is {lo}-{hi} ms. Slow down and give each note its own 'quack'.",
   "any.spacingMs.high": "Your notes are {value} ms apart; aim for {lo}-{hi} ms. Keep the call moving.",
   "any.spacingCv.high": "Your pace changes during the call. Keep the gaps between notes the same, like a steady clock.",
   "any.noteCount.low": "You used {value} notes; aim for {lo}-{hi}.",
@@ -8,8 +8,8 @@
   "any.lastFirstRatio.high": "Your notes stay long all the way through. Make each note a little shorter than the one before.",
   "any.lastFirstRatio.low": "Your notes shrink too fast. Let the first few notes ring a little longer.",
   "any.loudestIndex.high": "Your loudest note came late (your {value} note). Hit the first notes hardest, then taper off.",
-  "any.resonanceHz.high": "Your call sounds high and thin ({value}; hens sit around {lo}-{hi}). Use less air pressure and cup your hand more around the end of the call.",
-  "any.resonanceHz.low": "Your call sounds low and muffled ({value}; hens sit around {lo}-{hi}). Open your hand a little and push a bit more air.",
+  "any.resonanceHz.high": "Your call sounds high and thin ({value}; your target is about {lo} to {hi}). Use less air pressure and cup your hand more around the end of the call.",
+  "any.resonanceHz.low": "Your call sounds low and muffled ({value}; your target is about {lo} to {hi}). Open your hand a little and push a bit more air.",
   "any.resonanceSlopeHzPerNote.high": "Your notes climb in pitch. Let each note drop a little, like a hen settling down.",
   "any.resonanceSlopeHzPerNote.low": "Your pitch drops too fast from note to note. Keep the notes closer together in pitch.",
   "any.maxSqueakShare.high": "There's a squeak in your call. That usually means too much air or a pinched reed: back off the air and keep your hand relaxed.",
@@ -25,6 +25,6 @@
   "comeback.spacingMs.high": "Your comeback is too slow ({value} ms between notes). Make it urgent: {lo}-{hi} ms.",
   "positive.rhythm": "Your pace is steady. Keep that rhythm.",
   "positive.notes": "Good note count and shape.",
-  "positive.pitch": "Your pitch sits right where a hen's does.",
+  "positive.pitch": "Your pitch sits right on target.",
   "positive.tone": "Clean tone with no squeaks. Nice."
 }

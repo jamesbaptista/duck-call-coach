@@ -17,7 +17,6 @@ export interface SelectedTips {
 const MAX_PROBLEMS = 3;
 const PLACEHOLDERS: readonly string[] = ["value", "lo", "hi"];
 const PLACEHOLDER_PATTERN = /\{([^{}]*)\}/g;
-const HZ_PER_KHZ = 1000;
 
 let cachedTips: TipTable | undefined;
 
@@ -67,7 +66,7 @@ function ordinal(n: number): string {
 export function formatValue(key: MeasureKey, n: number): string {
   switch (key) {
     case "resonanceHz":
-      return `${(n / HZ_PER_KHZ).toFixed(1)} kHz`;
+      return `${Math.round(n)} Hz`;
     case "loudestIndex":
       return ordinal(Math.round(n) + 1);
     case "spacingCv":

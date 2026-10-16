@@ -46,7 +46,7 @@ function scoresWithSubs(subs: Record<SubScore, number | null>): Scores {
   return { overall: 50, subs, measures: [] };
 }
 
-const SPACING_LOW = "Your notes are 141 ms apart; a hen's are 230-370 ms. Slow down and give each note its own 'quack'.";
+const SPACING_LOW = "Your notes are 141 ms apart; your target is 230-370 ms. Slow down and give each note its own 'quack'.";
 const FADE_LOW = "Your last note is nearly as loud as your loudest. Ease off the air so each note gets softer.";
 const SQUEAK_HIGH =
   "There's a squeak in your call. That usually means too much air or a pinched reed: back off the air and keep your hand relaxed.";
@@ -96,6 +96,21 @@ describe("selectTips", () => {
     expect(problems[2]).toBe(SQUEAK_HIGH);
   });
 
+  it("words a resonance tip against your target in whole hertz", () => {
+    const scores = scoresOf([measure("resonanceHz", 2430.6, { lo: 1800, hi: 2100 }, 6)]);
+    expect(selectTips("hail", scores).problems).toEqual([
+      "Your call sounds high and thin (2431 Hz; your target is about 1800 Hz to 2100 Hz). Use less air pressure and " +
+        "cup your hand more around the end of the call.",
+    ]);
+  });
+
+  it("never says the target is a hen's, since it may be your own reference", () => {
+    for (const [name, text] of Object.entries(loadTips())) {
+      if (!name.startsWith("positive.") && /\{lo\}|\{hi\}/.test(text)) expect(text).not.toMatch(/\bhens?\b|hen's/);
+    }
+    expect(loadTips()["positive.pitch"]).not.toMatch(/hen/);
+  });
+
   it("formats the loudest note as an ordinal", () => {
     const scores = scoresOf([measure("loudestIndex", 3, { lo: 0, hi: 1 }, 4)]);
     expect(selectTips("hail", scores).problems).toEqual([
@@ -107,7 +122,7 @@ describe("selectTips", () => {
 describe("positive message", () => {
   it("comes from the highest sub-score", () => {
     expect(selectTips("hail", scoresWithSubs({ rhythm: 60, notes: 70, pitch: 95, tone: 80 })).positive).toBe(
-      "Your pitch sits right where a hen's does.",
+      "Your pitch sits right on target.",
     );
   });
 
@@ -145,8 +160,9 @@ describe("formatValue", () => {
     ["burstSpacingMs", 99.4, "99"],
     ["firstNoteMs", 250, "250"],
     ["medianNoteMs", 29.5, "30"],
-    ["resonanceHz", 2450, "2.5 kHz"],
-    ["resonanceHz", 1800, "1.8 kHz"],
+    ["resonanceHz", 2130.4, "2130 Hz"],
+    ["resonanceHz", 1800, "1800 Hz"],
+    ["resonanceHz", 2449.5, "2450 Hz"],
     ["resonanceSlopeHzPerNote", -45.4, "-45"],
     ["fadeDb", 3.4, "3"],
     ["spacingCv", 0.1234, "0.12"],
