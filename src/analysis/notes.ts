@@ -1,7 +1,6 @@
 import { ANALYSIS } from "../config/analysis";
 import type { NoteSpan } from "./types";
 
-const SMOOTH_FRAMES = 3;
 /** Absorbs floating-point error when comparing frame counts against durations in seconds. */
 const DURATION_EPSILON = 1e-9;
 
@@ -63,13 +62,19 @@ function mergeShortGaps(spans: NoteSpan[]): NoteSpan[] {
   return merged;
 }
 
-/** Centered 3-frame moving average, zero-padded at the array ends (numpy `convolve(..., "same")`). */
+/**
+ * Fixed centered 3-tap moving average. At the array ends it averages only the frames that exist,
+ * so a missing neighbour never reads as a 0 dB (full scale) frame.
+ */
 function smoothLevels(levels: Float32Array): Float32Array {
+  const last = levels.length - 1;
   const smoothed = new Float32Array(levels.length);
-  for (let i = 0; i < levels.length; i++) {
-    const before = i > 0 ? levels[i - 1] : 0;
-    const after = i < levels.length - 1 ? levels[i + 1] : 0;
-    smoothed[i] = (before + levels[i] + after) / SMOOTH_FRAMES;
+  for (let i = 0; i <= last; i++) {
+    const from = Math.max(i - 1, 0);
+    const to = Math.min(i + 1, last);
+    let sum = 0;
+    for (let k = from; k <= to; k++) sum += levels[k];
+    smoothed[i] = sum / (to - from + 1);
   }
   return smoothed;
 }

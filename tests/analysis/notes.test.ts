@@ -10,13 +10,18 @@ const FLOOR_DB = -60;
 /** Builds a level array from [frameCount, levelDb] runs. */
 function levels(...runs: Array<[number, number]>): Float32Array {
   const out: number[] = [];
-  for (const [count, db] of runs) {
-    for (let i = 0; i < count; i++) out.push(db);
+  for (const run of runs) {
+    for (let i = 0; i < run[0]; i++) out.push(run[1]);
   }
   return Float32Array.from(out);
 }
 
 const quiet = (count: number): [number, number] => [count, FLOOR_DB];
+
+/** A straight-line run of levels from fromDb (inclusive) toward toDb (exclusive). */
+function ramp(count: number, fromDb: number, toDb: number): [number, number][] {
+  return Array.from({ length: count }, (_, i): [number, number] => [1, fromDb + ((toDb - fromDb) * i) / count]);
+}
 
 describe("noiseFloorDb", () => {
   it("takes the 10th percentile with linear interpolation", () => {
@@ -70,8 +75,12 @@ describe("findNotes", () => {
   });
 
   it("keeps blocks apart when the gap is 25 ms or longer", () => {
-    const notes = findNotes(levels(quiet(10), [20, -20], quiet(3), [20, -20], quiet(10)), FLOOR_DB);
-    expect(notes).toHaveLength(2);
+    // Same shallow setup as the merge test, with a 3-frame gap: not merged, so the spans are exact.
+    const notes = findNotes(levels(quiet(10), [20, -46], [3, -53], [20, -46], quiet(10)), FLOOR_DB);
+    expect(notes).toEqual([
+      { startFrame: 10, endFrame: 30 },
+      { startFrame: 33, endFrame: 53 },
+    ]);
   });
 
   it("drops a block shorter than 30 ms", () => {
@@ -92,12 +101,50 @@ describe("findNotes", () => {
 
   it("splits a loud region at a dip of 6 dB or more", () => {
     const notes = findNotes(levels(quiet(10), [15, -20], [5, -30], [15, -20], quiet(10)), FLOOR_DB);
-    expect(notes).toHaveLength(2);
-    expect(notes[0].startFrame).toBe(10);
-    expect(notes[1].endFrame).toBe(45);
-    expect(notes[0].endFrame).toBe(notes[1].startFrame);
-    expect(notes[0].endFrame).toBeGreaterThan(24);
-    expect(notes[0].endFrame).toBeLessThan(30);
+    expect(notes).toEqual([
+      { startFrame: 10, endFrame: 26 },
+      { startFrame: 26, endFrame: 45 },
+    ]);
+  });
+
+  it("does not cut a dip less than 30 ms into the region", () => {
+    // The smoothed minimum first appears at frame 2, only 20 ms into the region, so the cut waits for frame 3.
+    // Without the minimum-length rule the 2-frame lead-in would be cut off and dropped as too short.
+    const notes = findNotes(levels([1, -20], [5, -35], [15, -20], quiet(10)), FLOOR_DB);
+    expect(notes).toEqual([
+      { startFrame: 0, endFrame: 3 },
+      { startFrame: 3, endFrame: 21 },
+    ]);
+  });
+
+  it("ignores a recovery that arrives later than 250 ms after the dip", () => {
+    // 10 dB fall, then a slow 0.2 dB/frame climb: only 5 dB of the climb falls inside the 25-frame lookahead.
+    const slow = findNotes(
+      levels(quiet(10), ...ramp(20, -20, -30), ...ramp(50, -30, -20), quiet(10)),
+      FLOOR_DB,
+    );
+    expect(slow).toEqual([{ startFrame: 10, endFrame: 80 }]);
+  });
+
+  it("splits when the recovery arrives inside the 250 ms lookahead", () => {
+    // Same fall, then a 0.4 dB/frame climb: 10 dB of recovery inside the lookahead.
+    const fast = findNotes(
+      levels(quiet(10), ...ramp(20, -20, -30), ...ramp(25, -30, -20), quiet(10)),
+      FLOOR_DB,
+    );
+    expect(fast).toHaveLength(2);
+  });
+
+  it("does not invent a dip from the array edges", () => {
+    // A note already sounding at frame 0 with a 4 dB dip stays one note (no phantom 0 dB frame before it).
+    const notes = findNotes(levels([10, -20], [5, -24], [10, -18], quiet(10)), FLOOR_DB);
+    expect(notes).toEqual([{ startFrame: 0, endFrame: 25 }]);
+  });
+
+  it("keeps the last frames of a recording that ends mid-note", () => {
+    // A quiet tail ending at the last frame must not look like a rise (no phantom 0 dB frame after it).
+    const notes = findNotes(levels(quiet(5), [10, -20], [6, -27]), FLOOR_DB);
+    expect(notes).toEqual([{ startFrame: 5, endFrame: 21 }]);
   });
 
   it("does not split at a dip shallower than 6 dB", () => {
