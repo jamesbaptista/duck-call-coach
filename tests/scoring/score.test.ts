@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { analyze } from "../../src/analysis/analyze";
+import { measureCall } from "../../src/analysis/measure";
 import type { CallMeasurements, CallType } from "../../src/analysis/types";
 import { loadTargets, scoreAttempt, scoreMeasure } from "../../src/scoring/score";
 import targetsJson from "../../src/scoring/targets.json";
 import { parseTargets } from "../../src/scoring/targetsSchema";
+import { loadTips, selectTips } from "../../src/scoring/tips";
 import { CALL_TYPES, SUB_SCORES } from "../../src/scoring/types";
 import type { MeasureTarget } from "../../src/scoring/types";
 import { readWav } from "../helpers/wav";
@@ -140,6 +142,25 @@ describe("scoreAttempt", () => {
     const scores = scoreAttempt({ ...chuckleMeasurements(), burstSpacingMs: 60 }, loadTargets("chuckle"));
     expect(scores.subs.rhythm).toBe(50);
     expect(scores.overall).toBe(Math.round((3 * 50 + 2 * 100 + 1 * 100) / 6));
+  });
+
+  it("scores a slow chuckle (clicks over burstGapS apart) low on rhythm and says to roll faster", () => {
+    const click = (startS: number) => ({
+      startS,
+      endS: startS + 0.06,
+      durationMs: 60,
+      peakDb: -20,
+      resonanceHz: 2000,
+      fundamentalHz: null,
+      squeakShare: 0.1,
+      flatness: 0.1,
+    });
+    const slow = measureCall([0, 0.3, 0.6, 0.9, 1.2, 1.5].map(click), -60);
+    const scores = scoreAttempt(slow, loadTargets("chuckle"));
+    expect(scores.subs.rhythm).not.toBeNull();
+    expect(scores.subs.rhythm as number).toBeLessThan(20);
+    expect(scores.overall).toBeLessThan(70);
+    expect(selectTips("chuckle", scores).problems[0]).toBe(loadTips()["chuckle.burstSpacingMs.high"]);
   });
 
   it("reports an overall of 0 when nothing can be scored", () => {

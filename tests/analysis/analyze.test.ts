@@ -121,11 +121,24 @@ describe("measureCall", () => {
     });
   });
 
-  it("leaves the resonance slope null under three notes and the burst spacing null without short gaps", () => {
+  it("leaves the resonance slope null under three notes", () => {
     const two = measureCall([note(0, 100), note(0.4, 100)], -60);
     expect(two.resonanceSlopeHzPerNote).toBeNull();
-    expect(two.burstSpacingMs).toBeNull();
     expect(two.spacingCv).toBe(0);
+  });
+
+  it("falls back to the median of all gaps for the burst spacing when no gap is under burstGapS", () => {
+    const two = measureCall([note(0, 100), note(0.4, 100)], -60);
+    expect(two.burstSpacingMs).toBeCloseTo(400, 6);
+
+    // A slow chuckle: 60 ms clicks 300-340 ms apart, none close enough to count as a burst.
+    const slowClicks = [0, 0.3, 0.62, 0.92, 1.26].map((startS) => note(startS, 60));
+    expect(measureCall(slowClicks, -60).burstSpacingMs).toBeCloseTo(310, 6);
+  });
+
+  it("uses only the in-burst gaps when there are some", () => {
+    const mixed = [note(0, 60), note(0.12, 60), note(0.26, 60), note(0.9, 60)];
+    expect(measureCall(mixed, -60).burstSpacingMs).toBeCloseTo(130, 6);
   });
 
   it("reports a squeak share of 0 when no note was loud enough to measure", () => {

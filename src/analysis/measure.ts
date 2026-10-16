@@ -57,10 +57,15 @@ function spacingStats(gapsMs: number[]): Pick<CallMeasurements, "spacingMs" | "s
   return { spacingMs, spacingCv: std / spacingMs };
 }
 
-/** Median of the spacings shorter than burstGapS (notes inside a chuckle burst); null when there are none. */
+/**
+ * Median of the spacings shorter than burstGapS (notes inside a chuckle burst). When no gap is that short the
+ * clicks never formed a burst, so it falls back to the median of all gaps, letting a slow chuckle score as slow.
+ * Null under two notes.
+ */
 function burstSpacingMs(gapsMs: number[]): number | null {
+  if (gapsMs.length === 0) return null;
   const inBurst = gapsMs.filter((gap) => gap < ANALYSIS.burstGapS * MS_PER_S - TIME_EPSILON_MS);
-  return inBurst.length ? median(inBurst) : null;
+  return median(inBurst.length ? inBurst : gapsMs);
 }
 
 /** Largest measured squeak share; 0 when no note was loud enough to be measured. */
