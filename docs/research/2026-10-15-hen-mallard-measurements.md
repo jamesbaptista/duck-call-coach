@@ -150,3 +150,12 @@ nasal tone, hard or mushy note starts, weak air support. These need real human r
 - The first note scored in `steady_quacks.wav` as a quack is 170 ms, exactly on the lower bound of that test and just under the 180-375 ms built-in quack target.
 - Product risk for the tuning round: dense recordings raise the floor. A user who quacks over and over into a short recording raises their own percentile floor, which shortens the notes and can fail the 15 dB SNR gate.
 - Measured: hail_a 9 notes, 235 ms spacing, CV 0.037, 1945 Hz, fade 4.8 dB, squeak 0.21; steady_quacks (hail) 19 notes, 507 ms; steady_quacks (quack) 170 ms, 2005 Hz; chuckle_a 16 notes, median 70 ms, burst 130 ms; hail_b 4 notes, 350 ms; quacks_4 (quack) too_quiet, 140 ms, 1884 Hz.
+
+## Planted-mistake magnitudes (TypeScript port)
+
+The TypeScript planted-mistake suite (`tests/helpers/plant.ts`, `tests/analysis/planted.test.ts`) uses the research script's approach with these magnitude changes. In each case the analysis reported the planted audio correctly; the plant was too weak to be a real mistake.
+
+- tooMany: the middle notes repeat at least twice and as often as needed to pass 10 notes, because `[all, middle, middle]` on the 4-note hail_b is only 8 notes, a normal hail (hail_b now 12, hail_a 23).
+- pitchHigh: x1.4 instead of x1.3, because x1.3 left hail_b at 2366 Hz (clean 1821 Hz), inside the 1500-2400 Hz hen range. With x1.4, hail_b reads 2562 Hz and hail_a 2736 Hz.
+- uneven: each gap is floored at note length + 40 ms, because the raw uniform(0.55, 1.45) jitter laid notes on top of each other and they merged, which gave a false fail on hail_b (3 notes, CV 0.12) and a false pass on hail_a (7 of 9 notes, CV 0.50).
+- Thin margins: hail_a uneven CV is 0.171 against the 0.15 limit (the floor stops the gaps shrinking), and hail_a's clean spacing is 235 ms against the 230 ms hail minimum. A later tuning change that nudges either measure could trip these tests.
